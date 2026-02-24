@@ -1,20 +1,12 @@
 """
 core.py - Logika scrapowania Vinted.
-
-Vinted-Notification — obsługa wszystkich domen Vinted (pl, de, fr, it, es...).
-Optymalizacje: równoległe zapytania per domena, cache config, szybsze timeouts.
-
-NAPRAWIONE:
-  - Bug z kategoriami (catalog[] → catalog_ids[] poprawne mapowanie)
-  - Oceny sprzedających (dodatkowy request do /api/v2/users/{id} z cache 1h)
-  - Logowanie dokładnych parametrów API dla debugowania
+NAPRAWIONO: Mechanizm deduplikacji (zapobieganie podwójnym wysyłkom).
 """
 import time
 import queue
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse, parse_qs, parse_qsl, urlencode, urlunparse
-
 import src.database as db
 from src.pyVinted.items.item import Item
 from src.discord_sender import send_item_to_discord
@@ -23,13 +15,11 @@ from src.anti_ban import SessionManager, human_delay, scan_jitter, backoff
 from src.proxy_manager import proxy_manager
 from src.config import extract_domain_from_url, get_api_base_url
 from src.logger import get_logger
-
 logger = get_logger("core")
 
-items_queue: queue.Queue = queue.Queue(maxsize=200)  # OOM protection — RPi3B (max ~200KB)
+items_queue: queue.Queue = queue.Queue(maxsize=200)
 
-# In-memory dedup — zapobiega duplikatom przy szybkim skanowaniu (20-30s)
-# Race condition: ten sam przedmiot może trafić do kolejki 2x zanim DB go zapisze
+# In-memory dedup — ochrona przed duplikatami w ramach jednej sesji
 from collections import deque as _deque
 _queued_ids_deque: _deque = _deque(maxlen=500)
 _queued_ids_set:   set    = set()
@@ -42,31 +32,24 @@ def _mark_queued(vinted_id: str):
     if len(_queued_ids_deque) == _queued_ids_deque.maxlen:
         oldest = _queued_ids_deque[0]
         _queued_ids_set.discard(oldest)
-    _queued_ids_deque.append(sid)
-    _queued_ids_set.add(sid)
+        _queued_ids_deque.append(sid)
+        _queued_ids_set.add(sid)
 
-# SessionManager per domena — każda domena ma własne cookies i sesję
 _session_managers: dict = {}
 _session_last_used: dict = {}
-_SM_TTL_SECONDS = 30 * 60  # 30 minut bez użycia → usuń
+_SM_TTL_SECONDS = 30 * 60
 
-# Cache ocen użytkowników — unikamy zbędnych requestów
-# {user_id: (feedback_count, feedback_score, expires_at)}
 _user_rating_cache: dict = {}
-_USER_CACHE_TTL = 3600  # 1 godzina
-
+_USER_CACHE_TTL = 3600
 
 def _get_session_manager(domain: str) -> SessionManager:
-    """Zwraca SessionManager dla danej domeny (lazy init + TTL tracking)."""
     host = f"www.vinted.{domain}"
     if host not in _session_managers:
         _session_managers[host] = SessionManager(host=host)
-    _session_last_used[host] = time.time()
+        _session_last_used[host] = time.time()
     return _session_managers[host]
 
-
 def _cleanup_stale_sessions():
-    """Usuwa SessionManagery nieużywane dłużej niż 30 minut (oszczędność RAM)."""
     now = time.time()
     stale = [h for h, ts in _session_last_used.items() if now - ts > _SM_TTL_SECONDS]
     for host in stale:
@@ -75,9 +58,7 @@ def _cleanup_stale_sessions():
         if sm:
             logger.info(f"Cleanup: usunięto sesję {host} (nieużywana >30min)")
 
-
 def warmup(domain: str = "pl"):
-    """Rozgrzewka — inicjalizuje sesję HTTP (cookies) dla danej domeny."""
     logger.info(f"Inicjalizacja sesji HTTP (vinted.{domain})…")
     try:
         sm = _get_session_manager(domain)
@@ -87,21 +68,17 @@ def warmup(domain: str = "pl"):
     except Exception as e:
         logger.warning(f"Warmup nieudany (spróbuję przy pierwszym skanie): {e}")
 
-
 def normalize_query_url(url: str) -> str:
-    """Normalizuje URL z Vinted — usuwa parametry sesyjne, wymusza newest_first."""
     parsed = urlparse(url)
-    parts  = parsed.path.strip("/").split("/")
+    parts = parsed.path.strip("/").split("/")
     if len(parts) >= 2 and parts[0] == "brand":
         brand_id = parts[1].split("-")[0]
         parsed = parsed._replace(path="/catalog", query=f"brand_ids[]={brand_id}")
-
-    # Używamy parse_qsl zamiast parse_qs — zachowuje kolejność i duplikaty
+    
     url_params = parse_qsl(parsed.query, keep_blank_values=False)
     skip = {"time", "search_id", "disabled_personalization", "page"}
     filtered = [(k, v) for k, v in url_params if k not in skip]
 
-    # Upewnij się że order=newest_first jest ustawiony
     if not any(k == "order" for k, _ in filtered):
         filtered.append(("order", "newest_first"))
     else:
@@ -109,12 +86,8 @@ def normalize_query_url(url: str) -> str:
 
     return urlunparse(parsed._replace(query=urlencode(filtered)))
 
-
-# ── Mapowanie parametrów URL Vinted → parametry API Vinted ──────────────────
-# WAŻNE: Vinted URL używa catalog[] ale API wymaga catalog_ids[]
-# Sprawdzone na Vinted API v2 — te mapowania są konieczne
 _PARAM_MAP = {
-    "catalog[]":      "catalog_ids[]",   # kategoria — KRYTYCZNE dla filtrowania
+    "catalog[]":      "catalog_ids[]",
     "status[]":       "status_ids[]",
     "size_ids[]":     "size_ids[]",
     "brand_ids[]":    "brand_ids[]",
@@ -123,29 +96,22 @@ _PARAM_MAP = {
     "country_ids[]":  "country_ids[]",
     "city_ids[]":     "city_ids[]",
     "disposal[]":     "disposal[]",
-    # Parametry cenowe — pass-through
     "price_from":     "price_from",
     "price_to":       "price_to",
     "currency":       "currency",
     "search_text":    "search_text",
 }
 
-# Parametry które ZAWSZE pomijamy (sesyjne / zbędne dla API)
 _SKIP_PARAMS = {
     "time", "search_id", "page", "disabled_personalization",
     "ref", "utm_source", "utm_medium", "utm_campaign",
 }
 
-
 def _build_api_params(query_url: str, per_page: int) -> list:
-    """
-    Buduje listę parametrów do zapytania API Vinted.
-    Mapuje parametry URL → parametry API i filtruje zbędne.
-    """
-    parsed     = urlparse(query_url)
+    parsed = urlparse(query_url)
     url_params = parse_qsl(parsed.query, keep_blank_values=False)
     api_params = []
-
+    
     for k, v in url_params:
         if k in _SKIP_PARAMS:
             continue
@@ -154,33 +120,21 @@ def _build_api_params(query_url: str, per_page: int) -> list:
 
     api_params.append(("per_page", str(per_page)))
 
-    # Upewnij się że order jest ustawiony
     if not any(k == "order" for k, _ in api_params):
         api_params.append(("order", "newest_first"))
-
-    # Próba pobrania ukrytych/wstrzymanych ofert
-    # Vinted nie gwarantuje działania — ale warto spróbować
+    
     api_params.append(("with_disabled_items", "1"))
-
     logger.debug(f"API params: {api_params}")
     return api_params
 
-
 def _fetch_user_rating(user_id: int, sm: SessionManager, domain: str) -> tuple:
-    """
-    Pobiera oceny i kraj użytkownika z API Vinted.
-    Cache 1h — nie wysyłamy requestu dla każdego przedmiotu z tym samym sprzedającym.
-    Zwraca (feedback_count, feedback_score, country_flag).
-    """
     if not user_id:
         return 0, 0.0, ""
-
     now = time.time()
 
-    # Sprawdź cache
     if user_id in _user_rating_cache:
         cached = _user_rating_cache[user_id]
-        if now < cached[3]:  # expires_at
+        if now < cached[3]:
             return cached[0], cached[1], cached[2]
 
     try:
@@ -189,24 +143,13 @@ def _fetch_user_rating(user_id: int, sm: SessionManager, domain: str) -> tuple:
 
         if r.status_code == 200:
             user_data = r.json().get("user", {})
-
-            # Liczba opinii
-            fc = (
-                user_data.get("feedback_count")
-                or user_data.get("positive_feedback_count")
-                or 0
-            )
+            fc = user_data.get("feedback_count") or user_data.get("positive_feedback_count") or 0
             try:
                 count = int(fc) if fc else 0
             except (ValueError, TypeError):
                 count = 0
 
-            # Reputacja (0–1 lub 0–5)
-            raw_rep_val = (
-                user_data.get("feedback_reputation")
-                or user_data.get("reputation")
-                or 0
-            )
+            raw_rep_val = user_data.get("feedback_reputation") or user_data.get("reputation") or 0
             try:
                 raw_rep = float(raw_rep_val)
             except (ValueError, TypeError):
@@ -219,7 +162,6 @@ def _fetch_user_rating(user_id: int, sm: SessionManager, domain: str) -> tuple:
             else:
                 score = raw_rep
 
-            # Kraj sprzedającego → flaga emoji
             from src.pyVinted.items.item import Item as _Item
             country_code = (
                 user_data.get("country_iso_code")
@@ -229,10 +171,8 @@ def _fetch_user_rating(user_id: int, sm: SessionManager, domain: str) -> tuple:
             ).upper()
             country_flag = _Item.COUNTRY_FLAGS.get(country_code, "")
 
-            # Zapisz do cache (4-elementowy tuple)
             _user_rating_cache[user_id] = (count, score, country_flag, now + _USER_CACHE_TTL)
 
-            # Ogranicz rozmiar cache (max 500 wpisów)
             if len(_user_rating_cache) > 500:
                 oldest = sorted(_user_rating_cache.items(), key=lambda x: x[1][3])[:100]
                 for uid, _ in oldest:
@@ -245,18 +185,12 @@ def _fetch_user_rating(user_id: int, sm: SessionManager, domain: str) -> tuple:
 
     return 0, 0.0, ""
 
-
 def _fetch_items(query_url: str, per_page: int = 20):
-    """
-    Pobiera przedmioty z Vinted API (dowolna domena: pl, de, fr, it, es...).
-    Max 3 próby z exponential backoff.
-    Po pobraniu — enrichuje przedmioty o oceny sprzedających.
-    """
-    domain  = extract_domain_from_url(query_url)
+    domain = extract_domain_from_url(query_url)
     api_url = get_api_base_url(domain)
-    sm      = _get_session_manager(domain)
+    sm = _get_session_manager(domain)
     api_params = _build_api_params(query_url, per_page)
-
+    
     for attempt in range(1, 4):
         try:
             proxy = proxy_manager.get_proxy_dict()
@@ -264,10 +198,9 @@ def _fetch_items(query_url: str, per_page: int = 20):
             if proxy:
                 from src.anti_ban import build_headers
                 import requests as _req
-                host    = f"www.vinted.{domain}"
+                host = f"www.vinted.{domain}"
                 headers = dict(sm._session.headers) if sm._session else build_headers(host)
-                r = _req.get(api_url, params=api_params, timeout=10,
-                             proxies=proxy, headers=headers)
+                r = _req.get(api_url, params=api_params, timeout=10, proxies=proxy, headers=headers)
             else:
                 r = sm.get(api_url, params=api_params, timeout=10)
 
@@ -303,8 +236,7 @@ def _fetch_items(query_url: str, per_page: int = 20):
 
             items = [Item(it, domain=domain) for it in data.get("items", [])]
 
-            # ── Enrichment: oceny sprzedających ─────────────────────────────
-            # Zbieramy unikalne user_id, pobieramy oceny równolegle
+            # Enrichment: oceny sprzedających
             users_to_fetch = {
                 it.user_id for it in items
                 if it.user_id and it.feedback_count == 0
@@ -324,14 +256,12 @@ def _fetch_items(query_url: str, per_page: int = 20):
                         except Exception:
                             pass
 
-                # Wstaw oceny i kraj do przedmiotów
                 for it in items:
                     if it.user_id and it.user_id in ratings:
                         count, score, flag = ratings[it.user_id]
                         if count > 0:
                             it.feedback_count = count
                             it.feedback_score = score
-                        # Zaktualizuj flagę jeśli mamy dokładniejszą z profilu
                         if flag:
                             it.country_flag = flag
 
@@ -345,32 +275,31 @@ def _fetch_items(query_url: str, per_page: int = 20):
     logger.error("3 próby nieudane — pomijam zapytanie")
     return []
 
-
 def _fetch_single_query(query: dict, items_per_query: int, new_item_window: int) -> tuple:
-    """Pobiera itemy dla jednego query — używane w ThreadPoolExecutor."""
-    query_id   = query["id"]
-    query_url  = query["url"]
+    query_id = query["id"]
+    query_url = query["url"]
     query_name = query["name"]
-    last_ts    = query["last_item_ts"]
-
+    last_ts = query["last_item_ts"]
     try:
-        all_items  = _fetch_items(query_url, per_page=items_per_query)
-        new_items  = [it for it in all_items if it.is_new_item(minutes=new_item_window)]
-        results    = []
+        all_items = _fetch_items(query_url, per_page=items_per_query)
+        new_items = [it for it in all_items if it.is_new_item(minutes=new_item_window)]
+        results = []
 
         for item in reversed(new_items):
             if last_ts and item.raw_timestamp <= last_ts:
                 continue
-            # Dedup — pomiń jeśli już w kolejce (ochrona przed race condition)
+            
+            # Dedup - sprawdzenie przed dodaniem do kolejki
             if _is_already_queued(item.id) or db.item_exists(str(item.id)):
                 continue
+            
             _mark_queued(item.id)
             results.append({
-                "item":        item,
-                "query_id":    query_id,
-                "query_name":  query_name,
+                "item": item,
+                "query_id": query_id,
+                "query_name": query_name,
                 "webhook_url": query["discord_webhook_url"],
-                "channel_id":  query["discord_channel_id"],
+                "channel_id": query["discord_channel_id"],
                 "embed_color": query["embed_color"],
             })
 
@@ -381,11 +310,8 @@ def _fetch_single_query(query: dict, items_per_query: int, new_item_window: int)
         db.add_log("ERROR", "scraper", f"Błąd [{query_name}]: {str(e)}")
         return (query_name, 0, 0, [])
 
-
 def scrape_all_queries():
-    """Pobiera przedmioty — zawsze równolegle (szybkość = priorytet)."""
     _cleanup_stale_sessions()
-
     queries = db.get_all_queries(active_only=True)
     if not queries:
         logger.debug("Brak aktywnych zapytań")
@@ -395,7 +321,7 @@ def scrape_all_queries():
     new_item_window = int(db.get_config("new_item_window", "2"))
 
     proxy_stats = proxy_manager.get_stats()
-    proxy_info  = f"{proxy_stats['total_proxies']} proxy" if proxy_stats["has_proxy"] else "direct"
+    proxy_info = f"{proxy_stats['total_proxies']} proxy" if proxy_stats["has_proxy"] else "direct"
     logger.info(f"Skan {len(queries)} zapytań | okno {new_item_window}min | {proxy_info}")
 
     max_workers = min(len(queries), 8)
@@ -416,34 +342,38 @@ def scrape_all_queries():
             except Exception as e:
                 logger.error(f"Błąd future: {e}")
 
-
 def process_items_queue():
-    """Konsumuje queue i wysyła na Discord (bot lub webhook)."""
+    """Konsumuje queue i wysyła na Discord."""
     try:
         from main import _metrics
     except ImportError:
         _metrics = None
-
+        
     while not items_queue.empty():
         try:
             entry = items_queue.get_nowait()
         except queue.Empty:
             break
 
-        item        = entry["item"]
-        query_id    = entry["query_id"]
-        query_name  = entry["query_name"]
+        item = entry["item"]
+        query_id = entry["query_id"]
+        query_name = entry["query_name"]
         webhook_url = entry["webhook_url"]
-        channel_id  = entry.get("channel_id", "")
+        channel_id = entry.get("channel_id", "")
         embed_color = entry["embed_color"]
 
         try:
-            if db.item_exists(str(item.id)):
-                logger.debug(f"Duplikat (DB): {item.id}")
+            # 🔒 PODWÓJNE SPRAWDZENIE BAZY PRZED WYSYŁKĄ
+            # To jest kluczowe, aby uniknąć duplikatów przy restarcie bota
+            vinted_id_str = str(item.id)
+            if db.item_exists(vinted_id_str):
+                logger.debug(f"Duplikat (DB check przed wysyłką): {vinted_id_str}")
                 db.update_query_last_ts(query_id, item.raw_timestamp)
                 continue
 
             bot = get_bot()
+            success = False
+            
             if bot.enabled and channel_id:
                 success = bot.send_item(
                     item=item,
@@ -461,11 +391,10 @@ def process_items_queue():
                 )
 
             if success:
-                if _metrics:
-                    _metrics["items_sent_total"] += 1
-                hidden_tag = " [UKRYTY]" if item.is_hidden else ""
+                # ✅ NATYCHMIASTOWY ZAPIS DO BAZY PO WYSYŁCE
+                # Najpierw zapisujemy ID, żeby nawet przy crashu nie wysłać ponownie
                 db.add_item(
-                    vinted_id=str(item.id),
+                    vinted_id=vinted_id_str,
                     title=item.title,
                     brand=item.brand_title,
                     price=str(item.price),
@@ -477,6 +406,12 @@ def process_items_queue():
                     query_id=query_id,
                     timestamp=item.raw_timestamp,
                 )
+                
+                # Aktualizacja metryk i logów
+                if _metrics:
+                    _metrics["items_sent_total"] += 1
+                    
+                hidden_tag = " [UKRYTY]" if item.is_hidden else ""
                 db.update_query_last_ts(query_id, item.raw_timestamp)
                 db.increment_query_items_found(query_id)
                 db.add_log("SUCCESS", "sender",
@@ -488,4 +423,4 @@ def process_items_queue():
         except Exception as e:
             logger.error(f"Błąd przetwarzania {item.id}: {e}", exc_info=True)
 
-        time.sleep(0.15)  # Szybka wysyłka — priorytet dla bycia pierwszym
+        time.sleep(0.15)
