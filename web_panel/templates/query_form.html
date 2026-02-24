@@ -1,36 +1,26 @@
 {% extends "base.html" %}
 {% block title %}{{ 'Edytuj' if action == 'edit' else 'Nowe' }} zapytanie{% endblock %}
-{% block page_title %}{{ 'Edytuj' if action == 'edit' else 'Nowe' }} zapytanie{% endblock %}
+{% block page_title %}{{ 'Edycja zapytania' if action == 'edit' else 'Dodaj nowe zapytanie' }}{% endblock %}
 
 {% block content %}
-
 <div class="max-w-4xl mx-auto">
-    <h2 class="text-xl font-bold mb-4">
-        {{ 'Edycja zapytania' if action == 'edit' else 'Dodaj nowe zapytanie' }}
-    </h2>
+    <h2 class="text-xl font-bold mb-4">{{ 'Edycja zapytania' if action == 'edit' else 'Dodaj nowe zapytanie' }}</h2>
 
     {% set fd = form_data %}
     
     <form method="POST" class="bg-gray-800 p-6 rounded-lg space-y-4">
-        
-        <!-- Nazwa zapytania -->
         <div>
-            <label class="block text-sm font-medium mb-1">
-                Nazwa zapytania *
-            </label>
+            <label class="block text-sm font-medium mb-1">Nazwa zapytania *</label>
             <input type="text" name="name" value="{{ fd.name if fd else '' }}" 
                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" required>
             <p class="text-xs text-gray-400 mt-1">Nazwa wyświetlana w panelu i w footerze embeda Discord.</p>
         </div>
 
-        <!-- URLe Vinted (WIELE URLI - ZMIANA!) -->
         <div>
-            <label class="block text-sm font-medium mb-1">
-                URL filtrów Vinted *
-            </label>
+            <label class="block text-sm font-medium mb-1">URL filtrów Vinted *</label>
             <textarea name="urls" rows="8" 
                       class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 font-mono text-sm"
-                      placeholder="https://www.vinted.pl/catalog?search_text=ssd+2tb&#10;https://www.vinted.pl/catalog?search_text=ssd+4tb&#10;https://www.vinted.pl/catalog?search_text=ssd+6tb">{{ fd.urls|join('\n') if fd and fd.urls else '' }}</textarea>
+                      placeholder="https://www.vinted.pl/catalog?search_text=ssd+2tb&#10;https://www.vinted.pl/catalog?search_text=ssd+4tb">{{ fd.urls|join('\n') if fd and fd.urls else '' }}</textarea>
             <p class="text-xs text-gray-400 mt-1">
                 ⚠️ <strong>Jeden URL na linię.</strong> Możesz dodać wiele wyszukiwań do jednego zapytania!<br>
                 Skopiuj URL wyszukiwania z Vinted (dowolna domena: .pl, .de, .fr, .it, .es...).<br>
@@ -38,110 +28,54 @@
             </p>
         </div>
 
-        <!-- Discord Webhook URL -->
         <div>
-            <label class="block text-sm font-medium mb-1">
-                Discord Webhook URL
-                {% if discord_mode == 'bot' %}(opcjonalne){% else %}*{% endif %}
-            </label>
+            <label class="block text-sm font-medium mb-1">Discord Webhook URL {% if discord_mode == 'bot' %}(opcjonalne){% else %}*{% endif %}</label>
             <input type="url" name="webhook_url" value="{{ fd.webhook_url if fd else '' }}" 
                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
                    {% if discord_mode != 'bot' %}required{% endif %}>
-            <p class="text-xs text-gray-400 mt-1">
-                Używany gdy Bot API jest wyłączony. W Discord: Ustawienia kanału → Integracje → Webhooks → Skopiuj URL.
-            </p>
+            <p class="text-xs text-gray-400 mt-1">Używany gdy Bot API jest wyłączony.</p>
         </div>
 
-        <!-- Discord Channel ID -->
         <div>
-            <label class="block text-sm font-medium mb-1">
-                Discord Channel ID
-                <span class="text-xs text-blue-400">(tylko dla Bot API)</span>
-            </label>
+            <label class="block text-sm font-medium mb-1">Discord Channel ID <span class="text-xs text-blue-400">(tylko dla Bot API)</span></label>
             <input type="text" name="channel_id" value="{{ fd.channel_id if fd else '' }}" 
                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" placeholder="123456789012345678">
-            <p class="text-xs text-gray-400 mt-1">
-                ID kanału Discord — wymagane gdy Bot API jest aktywny (Ustawienia → Discord Bot Token).<br>
-                Jak znaleźć: Discord → Ustawienia → Tryb dewelopera → PPM na kanał → Kopiuj ID.
-            </p>
         </div>
 
-        <!-- Nazwa kanału Discord -->
         <div>
-            <label class="block text-sm font-medium mb-1">
-                Nazwa kanału Discord
-            </label>
+            <label class="block text-sm font-medium mb-1">Nazwa kanału Discord</label>
             <input type="text" name="channel_name" value="{{ fd.channel_name if fd else '' }}" 
                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" placeholder="#Stone Island 200">
-            <p class="text-xs text-gray-400 mt-1">Nazwa kanału Discord (np. <code>Stone Island 200</code>) — wyświetlana w footerze embeda.</p>
         </div>
 
-        <!-- Kolor embeda -->
         <div>
             <label class="block text-sm font-medium mb-1">Kolor embeda</label>
             <select name="embed_color" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
                 {% for name, val in color_presets.items() %}
-                <option value="{{ val }}" {% if fd and fd.embed_color == val|string %}selected{% endif %}>
-                    {{ name | capitalize }}
-                </option>
+                <option value="{{ val }}" {% if fd and fd.embed_color == val|string %}selected{% endif %}>{{ name | capitalize }}</option>
                 {% endfor %}
             </select>
-            <p class="text-xs text-gray-400 mt-1">Kolor paska bocznego embeda na Discord.</p>
         </div>
 
-        <!-- Aktywne (tylko edycja) -->
         {% if action == 'edit' %}
         <div class="flex items-center">
-            <input type="checkbox" name="active" id="active" 
-                   {% if fd and fd.active %}checked{% endif %}
-                   class="mr-2 h-4 w-4">
+            <input type="checkbox" name="active" id="active" {% if fd and fd.active %}checked{% endif %} class="mr-2 h-4 w-4">
             <label for="active" class="text-sm">Zapytanie aktywne</label>
         </div>
         {% endif %}
 
-        <!-- Przyciski -->
         <div class="flex gap-3 pt-4">
-            <button type="submit" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
-                {{ 'Zapisz zmiany' if action == 'edit' else 'Dodaj zapytanie' }}
-            </button>
-            <a href="{{ url_for('queries') }}" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded">
-                Anuluj
-            </a>
+            <button type="submit" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">{{ 'Zapisz zmiany' if action == 'edit' else 'Dodaj zapytanie' }}</button>
+            <a href="{{ url_for('queries') }}" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded">Anuluj</a>
         </div>
     </form>
 
-    <!-- Przykłady URL-i Vinted -->
     <div class="mt-8 bg-gray-800 p-4 rounded-lg">
         <h3 class="text-lg font-bold mb-3">Przykłady URL-i Vinted</h3>
         <ul class="space-y-2 text-sm">
-            <li>
-                <code class="bg-gray-700 px-2 py-1 rounded block mb-1">https://www.vinted.pl/catalog?search_text=stone%20island&order=newest_first</code>
-                <span class="text-gray-400">— Stone Island (PL)</span>
-            </li>
-            <li>
-                <code class="bg-gray-700 px-2 py-1 rounded block mb-1">https://www.vinted.de/catalog?search_text=carhartt&catalog[]=4&price_to=50</code>
-                <span class="text-gray-400">— Carhartt kurtki (DE)</span>
-            </li>
-            <li>
-                <code class="bg-gray-700 px-2 py-1 rounded block mb-1">https://www.vinted.pl/catalog?brand_ids[]=73306&price_to=200</code>
-                <span class="text-gray-400">— Stone Island, max 200 PLN</span>
-            </li>
+            <li><code class="bg-gray-700 px-2 py-1 rounded block mb-1">https://www.vinted.pl/catalog?search_text=stone%20island&order=newest_first</code><span class="text-gray-400">— Stone Island (PL)</span></li>
+            <li><code class="bg-gray-700 px-2 py-1 rounded block mb-1">https://www.vinted.de/catalog?search_text=carhartt&catalog[]=4&price_to=50</code><span class="text-gray-400">— Carhartt kurtki (DE)</span></li>
         </ul>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-// Opcjonalnie: walidacja URLi przed wysłaniem
-document.querySelector('form').addEventListener('submit', function(e) {
-    const urlsTextarea = document.querySelector('textarea[name="urls"]');
-    const urls = urlsTextarea.value.trim().split('\n').filter(u => u.trim());
-    if (urls.length === 0) {
-        e.preventDefault();
-        alert('⚠️ Dodaj przynajmniej jeden URL wyszukiwania Vinted!');
-        urlsTextarea.focus();
-    }
-});
-</script>
 {% endblock %}
