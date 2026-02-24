@@ -1,22 +1,27 @@
-# Vinted-Notification
+# Vinted-Notification v4.0
 
 > Real-time notification system for Vinted listings. Works across **all Vinted country domains** (pl, de, fr, it, es, nl...). Get instant Discord alerts when items matching your search criteria are posted — be the best buyer on the platform.
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20Raspberry%20Pi-green)
-![Discord](https://img.shields.io/badge/Discord-Webhook-7289da)
+![Discord](https://img.shields.io/badge/Discord-Webhook%20%2F%20Bot-7289da)
 
 ---
 
+## 🔥 Nowości w wersji 4.0
+- **Fast Scan Mode (5-8s)** — Błyskawiczne skanowanie oparte na `asyncio`, pozwalające wyłapać okazje w czasie rzeczywistym.
+- **Seller Tracking** — Śledzenie konkretnych sprzedawców (po User ID) i natychmiastowe powiadomienia o ich nowych ogłoszeniach.
+- **Price Drop Alerts** — Bot zapamiętuje przedmioty i informuje Cię, gdy sprzedawca obniży cenę (wylicza zaoszczędzoną kwotę i procent obniżki).
+- **Multi-URL Queries** — Możliwość podpięcia wielu linków wyszukiwania pod jedno zapytanie (i jeden kanał Discord).
+- **Advanced Anti-Ban (curl_cffi)** — Baza na TLS fingerprint imitującym prawdziwą przeglądarkę Chrome, co skutecznie omija zabezpieczenia Cloudflare.
+
 ## Features
 
-- **Multi-domain** — Monitor vinted.pl, vinted.de, vinted.fr, vinted.it, vinted.es and 20+ other EU markets
-- **Discord channel per topic** — Each search has its own webhook → channel (e.g. `#Stone Island 200`)
-- **Rich embeds** — Up to 3 photos, price, condition, brand, size, seller rating, action links
-- **Web panel** (port 8080) — Manage queries, view items, live logs
-- **Anti-ban** — Session rotation, UA pool, rate limiting, jitter
-- **Proxy support** — Optional proxy list for IP protection
-- **Fast delivery** — 0.2s queue processing for real-time alerts
+- **Multi-domain** — Monitoruj vinted.pl, vinted.de, vinted.fr, vinted.it, vinted.es i ponad 20 innych rynków EU.
+- **Discord channel per topic** — Każde wyszukiwanie ma własny webhook/kanał (np. `#Stone Island 200`).
+- **Rich embeds** — Do 3 zdjęć, cena, stan, marka, rozmiar, ocena sprzedawcy i linki do akcji.
+- **Web panel** (port 8080) — Wygodne zarządzanie zapytaniami, sprzedawcami i podgląd na żywo.
+- **Anti-ban** — Rotacja sesji, User-Agent, rate limiting, jitter. Obsługa proxy oraz Cloudflare WARP.
 
 ---
 
@@ -25,13 +30,17 @@
 ### Windows / Linux / Mac
 
 ```bash
-cd Vinted-pacz  # or Vinted-Notification
+git clone [https://github.com/Zadarach/dwa-kamienie.git](https://github.com/Zadarach/dwa-kamienie.git)
+cd dwa-kamienie
 python -m venv venv
-venv\Scripts\activate   # Windows
-# source venv/bin/activate  # Linux/Mac
+
+# Windows:
+venv\Scripts\activate
+# Linux/Mac:
+source venv/bin/activate
+
 pip install -r requirements.txt
-copy .env.example .env  # Windows
-# cp .env.example .env  # Linux/Mac
+cp .env.example .env  # Skopiuj i uzupełnij zmienne (jeśli używasz)
 python main.py
 ```
 
@@ -133,26 +142,37 @@ Parameters `time`, `search_id`, `page` are automatically stripped.
 
 ```
 Vinted-Notification/
-├── main.py              # Entry point (3 threads: WebPanel, Scraper, Sender)
-├── requirements.txt
-├── .env.example
+├── main.py                  # Entry point (asyncio: Scraper, Sender, WebPanel)
+├── requirements.txt         # Zależności Python
+├── .env.example             # Przykład zmiennych środowiskowych
+├── .gitignore               # Ignorowane pliki
+├── README.md                # Dokumentacja projektu (v4.0)
+├── INSTALL_RPI.md           # Instrukcja instalacji na Raspberry Pi
 │
-├── src/
-│   ├── config.py        # Vinted domains, URL helpers
-│   ├── core.py          # Scraping logic, queue processing
-│   ├── database.py      # SQLite (queries, items, logs)
-│   ├── discord_sender.py
-│   ├── anti_ban.py      # Session rotation, rate limiting
-│   ├── proxy_manager.py
-│   ├── logger.py
-│   └── pyVinted/        # Vinted API wrapper
+├── install_warp.sh          # Skrypt instalacji Cloudflare WARP (ochrona IP)
+├── optimize_rpi.sh          # Skrypt optymalizacji pod 1GB RAM (RPi)
 │
-├── web_panel/
-│   ├── app.py           # Flask (port 8080)
-│   └── templates/
+├── deploy/                  # Pliki wdrożeniowe (systemd)
+│   ├── vinted-bot.service   # Usługa systemd (autostart bota)
+│   └── install_systemd.sh   # Skrypt instalacji usługi systemd
 │
-└── data/
-    └── vinted_notification.db
+├── src/                     # Kod źródłowy Python
+│   ├── config.py            # Domeny Vinted, helpery URL
+│   ├── core.py              # Logika scrapingu, kolejka, seller tracking, price drop
+│   ├── database.py          # Baza danych SQLite (v4.0)
+│   ├── discord_sender.py    # Wysyłka embedów na Discord
+│   ├── discord_bot.py       # Obsługa Discord Bot API
+│   ├── anti_ban.py          # Zabezpieczenia przed banem IP (curl_cffi)
+│   ├── proxy_manager.py     # Zarządzanie proxy / WARP
+│   ├── logger.py            # System logowania
+│   └── pyVinted/            # Wrapper API Vinted
+│
+├── web_panel/               # Panel webowy Flask (port 8080)
+│   ├── app.py               # Routy, formularze, API
+│   ├── templates/           # Szablony HTML (dashboard, queries, sellers, itp.)
+│   └── static/              # Pliki statyczne (CSS, JS, img)
+│
+└── data/                    # Baza danych i logi (ignorowane przez git)
 ```
 
 ---
