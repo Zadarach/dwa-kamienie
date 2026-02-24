@@ -1,6 +1,6 @@
 """
-main.py - Vinted-Notification v3.5 — punkt wejścia.
-ZMIANY: Domyślny interwał skanowania 20s (zamiast 60s)
+main.py - Vinted-Notification v3.6 — punkt wejścia.
+ZMIANY: Domyślny interwał skanowania 20s
 """
 import asyncio
 import threading
@@ -95,7 +95,6 @@ async def async_scraper():
     warmup()
     while not _stop.is_set():
         try:
-            # ZMIANA: Domyślnie 20s zamiast 60s (agresywniejsze skanowanie)
             interval = int(db.get_config("scan_interval", "20"))
             await asyncio.to_thread(scrape_all_queries)
             _metrics["scrapes_total"] += 1
@@ -171,12 +170,12 @@ def thread_health():
 
 async def async_main():
     main_log.info("=" * 52)
-    main_log.info("  Vinted-Notification v3.5 — uruchamianie")
+    main_log.info("  Vinted-Notification v3.6 — uruchamianie")
     main_log.info("=" * 52)
     db.init_db()
     enable_db_logging()
     main_log.info("✅ Baza danych gotowa")
-    db.add_log("INFO", "main", "Vinted-Notification v3.5 uruchomiony")
+    db.add_log("INFO", "main", "Vinted-Notification v3.6 uruchomiony")
     queries = db.get_all_queries()
     active  = sum(1 for q in queries if q["active"])
     main_log.info(f"📋 Zapytania: {len(queries)} total, {active} aktywnych")
