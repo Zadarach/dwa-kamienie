@@ -1,6 +1,6 @@
 """
 discord_sender.py - Wysyłanie powiadomień na Discord.
-WERSJA: 4.0 - Price drop alerts + Seller tracking alerts
+WERSJA: 4.0 - Price drop + Seller tracking + Hidden item alerts
 """
 import time
 import requests
@@ -69,7 +69,8 @@ def send_item_to_discord(item, webhook_url: str, query_name: str = "", embed_col
     }
 
     if item.is_hidden:
-        main_embed["footer"] = {"text": "⚠️ Ten przedmiot jest ukryty na Vinted!"}
+        main_embed["footer"] = {"text": "⚠️ Ten przedmiot jest ukryty na Vinted - wymaga weryfikacji!"}
+        main_embed["color"] = 0xFFA500  # Pomarańczowy dla ukrytych
     if item.photos:
         main_embed["image"] = {"url": item.photos[0]}
 
