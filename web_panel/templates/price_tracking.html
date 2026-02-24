@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Śledzenie Cen{% endblock %}
+{% block content %}
+<h1>💰 Śledzenie Cen</h1>
+<p>Obserwowanych przedmiotów: {{ stats.tracked_items }}</p>
+<p>Wykrytych spadków: {{ stats.price_drops_total }}</p>
+<table>
+    <tr><th>Tytuł</th><th>Pierwsza Cena</th><th>Ostatnia Cena</th><th>Najniższa</th><th>Spadki</th></tr>
+    {% for t in tracks %}
+    <tr>
+        <td>{{ t.title }}</td>
+        <td>{{ t.first_price }} {{ t.currency }}</td>
+        <td>{{ t.last_price }} {{ t.currency }}</td>
+        <td>{{ t.lowest_price }} {{ t.currency }}</td>
+        <td>{{ t.price_drops }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

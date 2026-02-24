@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Śledzeni Sprzedawcy{% endblock %}
+{% block content %}
+<h1>👤 Śledzeni Sprzedawcy</h1>
+<a href="{{ url_for('add_seller') }}" class="btn btn-primary">Dodaj Sprzedawcę</a>
+<table>
+    <tr><th>ID</th><th>Username</th><th>User ID</th><th>Aktywny</th><th>Akcje</th></tr>
+    {% for s in sellers %}
+    <tr>
+        <td>{{ s.id }}</td>
+        <td>{{ s.username }}</td>
+        <td>{{ s.user_id }}</td>
+        <td>{{ "✅" if s.active else "❌" }}</td>
+        <td><a href="{{ url_for('delete_seller', id=s.id) }}">Usuń</a></td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
