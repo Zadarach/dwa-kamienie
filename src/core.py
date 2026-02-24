@@ -17,12 +17,11 @@ from src.config import extract_domain_from_url, get_api_base_url
 from src.logger import get_logger
 logger = get_logger("core")
 
-# FUNKCJA 3: Mniejsza kolejka dla szybszego przetwarzania
 items_queue: queue.Queue = queue.Queue(maxsize=100)
 
 from collections import deque as _deque
 _queued_ids_deque: _deque = _deque(maxlen=300)
-_queued_ids_set:   set    = set()
+_queued_ids_set: set = set()
 
 def _is_already_queued(vinted_id: str) -> bool:
     return str(vinted_id) in _queued_ids_set
@@ -85,19 +84,19 @@ def normalize_query_url(url: str) -> str:
     return urlunparse(parsed._replace(query=urlencode(filtered)))
 
 _PARAM_MAP = {
-    "catalog[]":      "catalog_ids[]",
-    "status[]":       "status_ids[]",
-    "size_ids[]":     "size_ids[]",
-    "brand_ids[]":    "brand_ids[]",
-    "color_ids[]":    "color_ids[]",
+    "catalog[]": "catalog_ids[]",
+    "status[]": "status_ids[]",
+    "size_ids[]": "size_ids[]",
+    "brand_ids[]": "brand_ids[]",
+    "color_ids[]": "color_ids[]",
     "material_ids[]": "material_ids[]",
-    "country_ids[]":  "country_ids[]",
-    "city_ids[]":     "city_ids[]",
-    "disposal[]":     "disposal[]",
-    "price_from":     "price_from",
-    "price_to":       "price_to",
-    "currency":       "currency",
-    "search_text":    "search_text",
+    "country_ids[]": "country_ids[]",
+    "city_ids[]": "city_ids[]",
+    "disposal[]": "disposal[]",
+    "price_from": "price_from",
+    "price_to": "price_to",
+    "currency": "currency",
+    "search_text": "search_text",
 }
 
 _SKIP_PARAMS = {
@@ -238,10 +237,7 @@ def _fetch_items(query_url: str, per_page: int = 20):
     logger.error("3 próby nieudane")
     return []
 
-# ── FUNKCJA 1: Scraping profili sprzedawców ────────────────────────
-
 def _fetch_seller_items(user_id: int, domain: str = "pl", per_page: int = 20):
-    """Pobiera przedmioty od konkretnego sprzedawcy."""
     api_url = f"https://www.vinted.{domain}/api/v2/users/{user_id}/items"
     sm = _get_session_manager(domain)
     params = [("per_page", str(per_page)), ("order", "newest_first")]
@@ -258,8 +254,6 @@ def _fetch_seller_items(user_id: int, domain: str = "pl", per_page: int = 20):
     except Exception as e:
         logger.error(f"Błąd fetch seller items: {e}")
         return []
-
-# ── GŁÓWNE FUNKCJE SCRAPINGU ───────────────────────────────────────
 
 def _fetch_single_query_multi_url(query: dict, items_per_query: int, new_item_window: int) -> tuple:
     query_id = query["id"]
@@ -325,27 +319,20 @@ def scrape_all_queries():
             except Exception as e:
                 logger.error(f"Błąd future: {e}")
 
-# ── FUNKCJA 1: Skanowanie sprzedawców ──────────────────────────────
-
 def scrape_tracked_sellers():
-    """Skruje przedmioty od śledzonych sprzedawców."""
     sellers = db.get_tracked_sellers(active_only=True)
     if not sellers:
         return
-    
-    logger.info(f" Skanowanie {len(sellers)} sprzedawców...")
+    logger.info(f"👤 Skanowanie {len(sellers)} sprzedawców...")
     domain = db.get_config("default_domain", "pl")
-    
     for seller in sellers:
         try:
             user_id = int(seller['user_id'])
             items = _fetch_seller_items(user_id, domain, per_page=10)
-            
             for item in items:
                 if _is_already_queued(item.id) or db.item_exists(str(item.id)):
                     continue
                 _mark_queued(item.id)
-                
                 items_queue.put({
                     "item": item,
                     "query_id": 0,
@@ -355,27 +342,21 @@ def scrape_tracked_sellers():
                     "embed_color": "0xFFD700",
                     "is_seller_item": True,
                 })
-            
             db.update_seller_last_check(str(user_id))
-            time.sleep(0.5)  # Delay między sprzedawcami
-            
+            time.sleep(0.5)
         except Exception as e:
             logger.error(f"Błąd skanowania sprzedawcy {seller['username']}: {e}")
-
-# ── PRZETWARZANIE KOLEJKI ─────────────────────────────────────────
 
 def process_items_queue():
     try:
         from main import _metrics
     except ImportError:
         _metrics = None
-    
     while not items_queue.empty():
         try:
             entry = items_queue.get_nowait()
         except queue.Empty:
             break
-        
         item = entry["item"]
         query_id = entry["query_id"]
         query_name = entry["query_name"]
@@ -383,31 +364,23 @@ def process_items_queue():
         channel_id = entry.get("channel_id", "")
         embed_color = entry["embed_color"]
         is_seller_item = entry.get("is_seller_item", False)
-        
         try:
             vinted_id_str = str(item.id)
-            
-            # FUNKCJA 2: Check price drop
             is_new, price_dropped, drop_amount, old_price = db.check_price_drop(
-                vinted_id_str, item.title, item.brand_title, 
+                vinted_id_str, item.title, item.brand_title,
                 item.price, item.currency, item.size_title,
                 item.url, item.photo, item.user_id, item.user_login
             )
-            
             if db.item_exists(vinted_id_str):
                 if price_dropped:
-                    # FUNKCJA 2: Wyślij alert o obniżce ceny!
                     logger.info(f"💰 PRICE DROP: {item.title} -{drop_amount:.2f}{item.currency}")
                     send_price_drop_alert(item, webhook_url, drop_amount, old_price)
                     db.add_log("SUCCESS", "price_drop", f"💰 {item.title} -{drop_amount:.2f}{item.currency}")
                 db.update_query_last_ts(query_id, item.raw_timestamp)
                 continue
-            
             bot = get_bot()
             success = False
-            
             if is_seller_item:
-                # FUNKCJA 1: Alert o nowym przedmiocie od sprzedawcy
                 success = send_seller_alert(item, webhook_url)
             elif bot.enabled and channel_id:
                 success = bot.send_item(item=item, channel_id=channel_id, query_name=query_name,
@@ -415,7 +388,6 @@ def process_items_queue():
             else:
                 success = send_item_to_discord(item=item, webhook_url=webhook_url,
                     query_name=query_name, embed_color=embed_color)
-            
             if success:
                 db.add_item(vinted_id=vinted_id_str, title=item.title, brand=item.brand_title,
                     price=str(item.price), currency=item.currency, size=item.size_title or "",
@@ -423,10 +395,8 @@ def process_items_queue():
                     query_id=query_id, timestamp=item.raw_timestamp,
                     user_id=str(item.user_id) if item.user_id else None,
                     username=item.user_login)
-                
                 if _metrics:
                     _metrics["items_sent_total"] += 1
-                
                 hidden_tag = " [UKRYTY]" if item.is_hidden else ""
                 db.update_query_last_ts(query_id, item.raw_timestamp)
                 db.increment_query_items_found(query_id)
@@ -434,9 +404,6 @@ def process_items_queue():
                 logger.info(f"✅{hidden_tag} {item.title} ({item.price} {item.currency})")
             else:
                 db.add_log("ERROR", "sender", f"❌ Błąd wysyłki: {item.title}")
-                
         except Exception as e:
             logger.error(f"Błąd przetwarzania {item.id}: {e}", exc_info=True)
-        
-        # FUNKCJA 3: Szybsze przetwarzanie (0.1s zamiast 0.3s)
         time.sleep(0.1)
