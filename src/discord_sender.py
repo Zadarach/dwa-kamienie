@@ -1,6 +1,6 @@
 """
 discord_sender.py - Wysyłanie powiadomień na Discord.
-WERSJA: 4.0 - Price drop + Seller tracking + Hidden item alerts
+WERSJA: 4.1 - Connection pooling (requests.Session)
 """
 import time
 import requests
@@ -9,6 +9,7 @@ from src.logger import get_logger
 logger = get_logger("discord")
 
 _http_session = requests.Session()
+_http_session.mount('https://', requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10))
 
 COLOR_PRESETS = {
     "zielony": 0x57F287,
@@ -38,7 +39,6 @@ def _parse_color(color_str: str) -> int:
 
 def send_item_to_discord(item, webhook_url: str, query_name: str = "", embed_color: str = "5763719") -> bool:
     color = _parse_color(embed_color)
-    
     if item.feedback_count > 0:
         score = min(item.feedback_score, 5.0)
         full = int(score)
@@ -47,11 +47,9 @@ def send_item_to_discord(item, webhook_url: str, query_name: str = "", embed_col
         rating_val = f"{stars} ({item.feedback_count})"
     else:
         rating_val = "☆☆☆☆☆ Brak ocen"
-
     price_val = f"**{item.price} {item.currency}** ({item.total_price})"
     seller_name = f"{item.country_flag} {item.user_login}" if item.user_login else "🌍 —"
     discord_relative = f"<t:{item.raw_timestamp}:R>"
-    
     main_embed = {
         "author": {"name": seller_name, "url": item.user_url or item.url},
         "title": item.title,
@@ -67,27 +65,22 @@ def send_item_to_discord(item, webhook_url: str, query_name: str = "", embed_col
         ],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-
     if item.is_hidden:
         main_embed["footer"] = {"text": "⚠️ Ten przedmiot jest ukryty na Vinted - wymaga weryfikacji!"}
-        main_embed["color"] = 0xFFA500  # Pomarańczowy dla ukrytych
+        main_embed["color"] = 0xFFA500
     if item.photos:
         main_embed["image"] = {"url": item.photos[0]}
-
     embeds = [main_embed]
     for photo_url in item.photos[1:3]:
         embeds.append({"url": item.url, "color": color, "image": {"url": photo_url}})
-
     return _send_webhook(webhook_url, {"embeds": embeds})
 
 def send_price_drop_alert(item, webhook_url: str, drop_amount: float, old_price: float) -> bool:
-    """Wysyła alert o obniżce ceny."""
     try:
         price_float = float(item.price.replace(',', '.').replace(' ', ''))
         drop_percent = (drop_amount / old_price) * 100 if old_price > 0 else 0
     except:
         drop_percent = 0
-    
     embed = {
         "title": f"💰 OBNIŻKA CENY! {item.title}",
         "url": item.url,
@@ -101,16 +94,12 @@ def send_price_drop_alert(item, webhook_url: str, drop_amount: float, old_price:
         ],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    
     if item.photos:
         embed["image"] = {"url": item.photos[0]}
-    
     embed["footer"] = {"text": "🔥 Szybko kupuj zanim ktoś inny!"}
-    
     return _send_webhook(webhook_url, {"embeds": [embed]})
 
 def send_seller_alert(item, webhook_url: str) -> bool:
-    """Wysyła alert o nowym przedmiocie od śledzonego sprzedawcy."""
     embed = {
         "author": {"name": f"👤 {item.user_login}", "url": item.user_url or item.url},
         "title": f"🆕 NOWY PRZEDMIOT! {item.title}",
@@ -124,12 +113,9 @@ def send_seller_alert(item, webhook_url: str) -> bool:
         ],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    
     if item.photos:
         embed["image"] = {"url": item.photos[0]}
-    
     embed["footer"] = {"text": "👤 Śledzony sprzedawca"}
-    
     return _send_webhook(webhook_url, {"embeds": [embed]})
 
 def send_system_message(webhook_url: str, message: str, level: str = "INFO") -> bool:
