@@ -23,12 +23,10 @@ def get_connection():
     return conn
 
 def init_db():
-    """Inicjalizuje tabele w bazie danych."""
     with _lock:
         conn = get_connection()
         c = conn.cursor()
         
-        # Tabela queries (bez zmian)
         c.execute("""CREATE TABLE IF NOT EXISTS queries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -42,7 +40,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
         
-        # Tabela query_urls (wiele URLi na zapytanie)
         c.execute("""CREATE TABLE IF NOT EXISTS query_urls (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             query_id INTEGER NOT NULL,
@@ -51,7 +48,6 @@ def init_db():
             FOREIGN KEY (query_id) REFERENCES queries(id) ON DELETE CASCADE
         )""")
         
-        # Tabela items
         c.execute("""CREATE TABLE IF NOT EXISTS items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             vinted_id TEXT UNIQUE NOT NULL,
@@ -71,7 +67,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
         
-        # ── NOWA TABELA: tracked_sellers (Funkcja 1) ────────────────────
         c.execute("""CREATE TABLE IF NOT EXISTS tracked_sellers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT UNIQUE NOT NULL,
@@ -82,7 +77,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
         
-        # ── NOWA TABELA: price_tracking (Funkcja 2) ─────────────────────
         c.execute("""CREATE TABLE IF NOT EXISTS price_tracking (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             item_hash TEXT UNIQUE NOT NULL,
@@ -105,7 +99,6 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
         
-        # Tabela logs
         c.execute("""CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             level TEXT,
@@ -114,26 +107,18 @@ def init_db():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
         
-        # Tabela config
         c.execute("""CREATE TABLE IF NOT EXISTS config (
             key TEXT PRIMARY KEY,
             value TEXT
         )""")
         
-        # Migracja: dodaj kolumny do istniejącej tabeli items
         try:
             c.execute("ALTER TABLE items ADD COLUMN user_id TEXT")
-            logger.info("✅ Dodano user_id do items")
-        except:
-            pass
-        
+        except: pass
         try:
             c.execute("ALTER TABLE items ADD COLUMN username TEXT")
-            logger.info("✅ Dodano username do items")
-        except:
-            pass
+        except: pass
         
-        # Czyszczenie starych logów (>7 dni)
         try:
             c.execute("DELETE FROM logs WHERE timestamp < datetime('now', '-7 days')")
             conn.commit()
@@ -144,8 +129,6 @@ def init_db():
         conn.commit()
         conn.close()
         logger.info("✅ Baza danych zainicjalizowana (v4.0)")
-
-# ── QUERIES ──────────────────────────────────────────────────────
 
 def get_all_queries(active_only=False):
     conn = get_connection()
@@ -223,8 +206,6 @@ def increment_query_items_found(query_id):
         conn.commit()
         conn.close()
 
-# ── ITEMS ──────────────────────────────────────────────────────
-
 def item_exists(vinted_id):
     conn = get_connection()
     c = conn.cursor()
@@ -255,8 +236,6 @@ def get_all_items(limit=100):
     items = [dict(row) for row in c.fetchall()]
     conn.close()
     return items
-
-# ── TRACKED SELLERS (Funkcja 1) ─────────────────────────────────
 
 def get_tracked_sellers(active_only=True):
     conn = get_connection()
@@ -310,19 +289,12 @@ def update_seller_last_check(user_id):
         conn.commit()
         conn.close()
 
-# ── PRICE TRACKING (Funkcja 2) ──────────────────────────────────
-
 def _generate_item_hash(title, brand, size):
-    """Generuje unikalny hash dla przedmiotu (do śledzenia cen)."""
     import hashlib
     key = f"{title.lower()}|{brand.lower() if brand else ''}|{size.lower() if size else ''}"
     return hashlib.md5(key.encode()).hexdigest()[:16]
 
 def check_price_drop(vinted_id, title, brand, price, currency, size, item_url, photo_url, user_id=None, username=None):
-    """
-    Sprawdza czy cena spadła dla tego przedmiotu.
-    Zwraca: (is_new, price_dropped, drop_amount, old_price)
-    """
     item_hash = _generate_item_hash(title, brand, size)
     conn = get_connection()
     c = conn.cursor()
@@ -332,12 +304,10 @@ def check_price_drop(vinted_id, title, brand, price, currency, size, item_url, p
     except:
         price_float = 0
     
-    # Sprawdź czy przedmiot już istnieje w tracking
     c.execute("SELECT * FROM price_tracking WHERE item_hash = ? AND active = 1", (item_hash,))
     existing = c.fetchone()
     
     if not existing:
-        # Nowy przedmiot - dodaj do trackingu
         with _lock:
             c.execute("""INSERT INTO price_tracking 
                 (item_hash, vinted_id, title, brand, size, first_price, last_price, lowest_price, 
@@ -348,14 +318,12 @@ def check_price_drop(vinted_id, title, brand, price, currency, size, item_url, p
                  username, int(time.time())))
             conn.commit()
         conn.close()
-        return (True, False, 0, 0)  # New item, no price drop
+        return (True, False, 0, 0)
     else:
-        # Przedmiot istnieje - sprawdź cenę
         old_price = float(existing['last_price'])
         lowest_price = float(existing['lowest_price'])
         
         if price_float > 0 and price_float < old_price:
-            # CENA SPADŁA! 🎉
             price_drop = old_price - price_float
             new_lowest = min(price_float, lowest_price)
             
@@ -369,9 +337,8 @@ def check_price_drop(vinted_id, title, brand, price, currency, size, item_url, p
                      item_url, photo_url, item_hash))
                 conn.commit()
             conn.close()
-            return (False, True, price_drop, old_price)  # Price dropped!
+            return (False, True, price_drop, old_price)
         else:
-            # Aktualizuj ostatnią cenę (nawet jeśli wzrosła)
             with _lock:
                 c.execute("""UPDATE price_tracking SET 
                     last_price = ?, last_check = ?, updated_at = CURRENT_TIMESTAMP,
@@ -380,7 +347,7 @@ def check_price_drop(vinted_id, title, brand, price, currency, size, item_url, p
                     (str(price_float), int(time.time()), str(vinted_id), item_url, photo_url, item_hash))
                 conn.commit()
             conn.close()
-            return (False, False, 0, old_price)  # No change
+            return (False, False, 0, old_price)
 
 def get_price_tracking_stats():
     conn = get_connection()
@@ -392,20 +359,6 @@ def get_price_tracking_stats():
     }
     conn.close()
     return stats
-
-def cleanup_old_price_tracking(days=30):
-    """Usuń stare tracki cen (>X dni bez aktualizacji)."""
-    with _lock:
-        conn = get_connection()
-        c = conn.cursor()
-        cutoff = int(time.time()) - (days * 86400)
-        c.execute("DELETE FROM price_tracking WHERE last_check < ?", (cutoff,))
-        deleted = c.rowcount
-        conn.commit()
-        conn.close()
-        return deleted
-
-# ── LOGS ──────────────────────────────────────────────────────
 
 def add_log(level, source, message):
     with _lock:
