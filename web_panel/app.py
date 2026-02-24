@@ -1,6 +1,6 @@
 """
 web_panel/app.py - Flask panel webowy.
-WERSJA: 4.0 - Poprawione błędy formatowania + Seller/Price tracking
+WERSJA: 4.1 - Naprawione błędy formatowania + Seller/Price tracking endpoints
 """
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 import sqlite3
@@ -24,7 +24,7 @@ def init_config_defaults():
     c = conn.cursor()
     defaults = {
         ("scan_interval", "20"),
-        ("items_per_query", "15"),
+        ("items_per_query", "10"),
         ("new_item_window", "5"),
         ("query_delay", "2"),
         ("discord_bot_token", ""),
@@ -209,7 +209,7 @@ def settings():
     conn.close()
     return render_template("settings.html", config={
         "scan_interval": config.get("scan_interval", "20"),
-        "items_per_query": config.get("items_per_query", "15"),
+        "items_per_query": config.get("items_per_query", "10"),
         "new_item_window": config.get("new_item_window", "5"),
         "query_delay": config.get("query_delay", "2"),
         "discord_bot_token": config.get("discord_bot_token", ""),
