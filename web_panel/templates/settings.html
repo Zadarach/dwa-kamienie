@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Ustawienia{% endblock %}
+{% block page_title %}Ustawienia{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+
+    <div class="card mb-3">
+      <div class="card-header">
+        <i class="bi bi-gear me-2"></i>Konfiguracja scrapera
+      </div>
+      <div class="card-body p-4">
+        <form method="POST" id="settings-form">
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Interwał skanowania (sekundy)</label>
+            <div class="input-group">
+              <input type="number" name="scan_interval" class="form-control"
+                     value="{{ config.scan_interval }}" min="10" max="3600" step="5">
+              <span class="input-group-text" style="background:#1e2130;border-color:var(--border);color:#8891a8">s</span>
+            </div>
+            <div class="form-text">
+              Co ile sekund bot odpytuje Vinted. Min. 10s.
+              <strong>Zalecane: 60–120s</strong> żeby nie dostać bana.
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Przedmioty na zapytanie</label>
+            <input type="number" name="items_per_query" class="form-control"
+                   value="{{ config.items_per_query }}" min="5" max="50">
+            <div class="form-text">
+              Ile przedmiotów pobierać z każdego zapytania (5–50).
+              Więcej = większa szansa wyłapania nowych, ale wolniej.
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Okno nowych przedmiotów (minuty)</label>
+            <div class="input-group">
+              <input type="number" name="new_item_window" class="form-control"
+                     value="{{ config.new_item_window }}" min="2" max="60">
+              <span class="input-group-text" style="background:#1e2130;border-color:var(--border);color:#8891a8">min</span>
+            </div>
+            <div class="form-text">
+              Przedmiot dodany wcześniej niż X minut temu jest ignorowany (5–60).
+              Wyższe wartości = więcej historycznych wyników przy starcie. <strong>5 min = tylko naprawdę nowe oferty.</strong>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Opóźnienie między zapytaniami (sekundy)</label>
+            <div class="input-group">
+              <input type="number" name="query_delay" class="form-control"
+                     value="{{ config.query_delay }}" min="2" max="30" step="1">
+              <span class="input-group-text" style="background:#1e2130;border-color:var(--border);color:#8891a8">s</span>
+            </div>
+            <div class="form-text">
+              Ile sekund czekać między kolejnymi zapytaniami do Vinted (2–30s).
+              <strong>Zalecane: 5s</strong> — zbyt krótki czas = ryzyko bana IP.
+              Rzeczywisty delay jest losowy w zakresie ±50% tej wartości.
+            </div>
+          </div>
+
+          <hr style="border-color:var(--border)">
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              Tryb Discord
+            </label>
+            <select name="discord_mode" class="form-select">
+              <option value="webhook" {{ 'selected' if config.discord_mode == 'webhook' else '' }}>
+                Webhook (domyślny — bez przycisków)
+              </option>
+              <option value="bot" {{ 'selected' if config.discord_mode == 'bot' else '' }}>
+                Bot API (prawdziwe przyciski — wymaga tokena)
+              </option>
+            </select>
+            <div class="form-text">
+              Bot API wymaga zarejestrowania aplikacji Discord i tokena bota.
+            </div>
+          </div>
+
+          <div class="mb-4" id="botTokenSection" style="{{ '' if config.discord_mode == 'bot' else 'opacity:0.5' }}">
+            <label class="form-label fw-semibold">Discord Bot Token</label>
+            <input type="password" name="discord_bot_token" class="form-control font-monospace"
+                   placeholder="MTIzNDU2Nzg5…"
+                   value="{{ config.discord_bot_token or '' }}">
+            <div class="form-text">
+              <strong>Jak uzyskać token:</strong>
+              <a href="https://discord.com/developers/applications" target="_blank">discord.com/developers</a>
+              → New Application → Bot → Reset Token → Skopiuj.
+              Bot musi być zaproszony na serwer z uprawnieniem <code>Send Messages</code>.
+            </div>
+          </div>
+
+          <!-- Discord Channel ID — tylko dla Bot API, wyszarzone -->
+          <div class="mb-4" style="opacity:0.35; pointer-events:none; user-select:none;">
+            <label class="form-label fw-semibold" style="font-size:0.82rem; color:#6c757d;">
+              Discord Channel ID
+              <span style="font-size:0.72rem; background:#2a2d3e; color:#6c757d; border:1px solid #3a3d4e; border-radius:4px; padding:1px 6px; margin-left:6px;">tylko dla Bot API</span>
+            </label>
+            <input type="text" class="form-control form-control-sm font-monospace"
+                   style="color:#5a5d6e; background:#1a1d2e; border-color:#2a2d3e;"
+                   placeholder="1234567890123456789" disabled>
+            <div class="form-text" style="font-size:0.75rem; color:#4a4d5e;">
+              ID kanału Discord — wymagane gdy Bot API jest aktywny (Ustawienia → Discord Bot Token).
+              Jak znaleźć: Discord → Ustawienia → Tryb dewelopera → PPM na kanał → Kopiuj ID.
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-accent">
+            <i class="bi bi-save me-1"></i>Zapisz ustawienia
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Proxy -->
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-shield-lock me-2"></i>Ochrona IP — Proxy</span>
+        <span class="badge" id="proxy-badge">Ładowanie…</span>
+      </div>
+      <div class="card-body p-4">
+
+        <!-- Cloudflare WARP info -->
+        <div class="alert d-flex align-items-start gap-2 mb-4"
+             style="background:#1a2535; border:1px solid #2a4a7a; border-radius:8px; color:#7eb8f7;">
+          <i class="bi bi-shield-fill-check mt-1" style="font-size:1.1rem; color:#4a9ef7; flex-shrink:0;"></i>
+          <div>
+            <strong style="color:#7eb8f7;">Cloudflare WARP aktywny</strong>
+            <div style="font-size:0.83rem; color:#5a8abf; margin-top:2px;">
+              Ruch sieciowy bota jest tunelowany przez <strong>Cloudflare WARP</strong> na poziomie systemu.
+              Proxy skonfigurowane poniżej działają <em>dodatkowo</em> na warstwę aplikacji —
+              przy normalnej pracy nie są wymagane.
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Lista proxy <small class="text-muted fw-normal">(oddzielone średnikiem)</small></label>
+          <textarea name="proxy_list" class="form-control font-monospace" rows="3"
+                    placeholder="1.2.3.4:8080;5.6.7.8:3128;user:pass@9.10.11.12:8080"                    form="settings-form">{{ config.proxy_list }}</textarea>
+          <div class="form-text">
+            Format: <code>IP:PORT</code> lub <code>user:hasło@IP:PORT</code> dla proxy z autoryzacją.
+            Bot losuje proxy przy każdym żądaniu do Vinted.
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">URL do listy proxy <small class="text-muted fw-normal">(opcjonalnie)</small></label>
+          <input type="url" name="proxy_list_url" class="form-control font-monospace"
+                 value="{{ config.proxy_list_url }}"
+                 placeholder="https://api.proxyscrape.com/v2/?request=getproxies&amp;protocol=http…"
+                 form="settings-form">
+          <div class="form-text">
+            URL do pliku tekstowego z proxy (IP:PORT per linia). Odświeżany co 6 godzin.
+            Możesz użyć np. <a href="https://proxyscrape.com/free-proxy-list" target="_blank">ProxyScrape</a>
+            lub własnej listy na GitHubie.
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="proxy_check_enabled"
+                   id="proxyCheckSwitch" form="settings-form"
+                   {{ 'checked' if config.proxy_check_enabled == 'true' else '' }}>
+            <label class="form-check-label" for="proxyCheckSwitch">
+              Testuj proxy przed użyciem (wolniejszy start, ale pewniejsze proxy)
+            </label>
+          </div>
+          <div class="form-text">
+            Jeśli wyłączone — proxy używane bez weryfikacji (szybciej, może być kilka niedziałających).
+            Domyślnie wyłączone, jak w Vinted-Notifications.
+          </div>
+        </div>
+
+        <div class="alert" id="proxy-status-box" style="display:none"></div>
+
+      </div>
+    </div>
+
+    <!-- Info box -->
+    <div class="card">
+      <div class="card-header">
+        <i class="bi bi-info-circle me-2"></i>Informacje o systemie
+      </div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <td class="text-muted" style="width:160px">Wersja</td>
+              <td><code>{{ config.version }}</code></td>
+            </tr>
+            <tr>
+              <td class="text-muted">Baza danych</td>
+              <td><code>data/vinted_notification.db</code></td>
+            </tr>
+            <tr>
+              <td class="text-muted">Panel webowy</td>
+              <td><code>:8080</code></td>
+            </tr>
+            <tr>
+              <td class="text-muted">Ochrona IP</td>
+              <td><code style="color:#4a9ef7;">Cloudflare WARP</code></td>
+            </tr>
+            <tr>
+              <td class="text-muted">Platforma</td>
+              <td>
+                <code id="platform-info">—</code>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('platform-info').textContent = navigator.platform;
+
+// Załaduj status proxy
+async function loadProxyStatus() {
+  try {
+    const r = await fetch('/api/proxy-stats');
+    const d = await r.json();
+    const badge = document.getElementById('proxy-badge');
+    const box   = document.getElementById('proxy-status-box');
+    if (!d.has_proxy) {
+      badge.className = 'badge bg-secondary'; badge.textContent = 'Brak proxy (direct)';
+      box.style.display = 'none';
+    } else {
+      const mins = Math.round(d.next_check_in / 60);
+      badge.className = 'badge bg-success';
+      badge.textContent = '● ' + d.total_proxies + ' proxy załadowanych';
+      box.className = 'alert alert-success'; box.style.display = '';
+      box.textContent = d.total_proxies + ' proxy w puli. Następne odświeżenie za ~' + mins + ' min.';
+    }
+  } catch(e) { /* panel jeszcze nie gotowy */ }
+}
+loadProxyStatus();
+setInterval(loadProxyStatus, 10000);
+</script>
+{% endblock %}

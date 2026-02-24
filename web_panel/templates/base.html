@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="pl" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}Vinted-Notification{% endblock %} — Panel</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👁️</text></svg>">
+  <!-- Bootstrap 5 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css"/>
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css"/>
+  <style>
+    :root {
+      --bg-main:    #0f1117;
+      --bg-card:    #1a1d27;
+      --bg-sidebar: #13151f;
+      --accent:     #7c4dff;
+      --accent-alt: #5eead4;
+      --border:     #2a2d3e;
+      --text-muted: #8891a8;
+    }
+
+    body {
+      background: var(--bg-main);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 240px;
+      min-height: 100vh;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar-brand {
+      padding: 1.5rem 1.25rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-brand .logo {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .sidebar-brand .logo span { color: var(--accent-alt); }
+    .sidebar-brand small { color: var(--text-muted); font-size: .72rem; }
+
+    .nav-section-label {
+      padding: .6rem 1.25rem .2rem;
+      font-size: .65rem;
+      font-weight: 600;
+      letter-spacing: .1em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    #sidebar .nav-link {
+      color: #c0c8e0;
+      padding: .55rem 1.25rem;
+      border-radius: 8px;
+      margin: 1px .6rem;
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      font-size: .88rem;
+      transition: all .15s;
+    }
+    #sidebar .nav-link:hover { background: rgba(124,77,255,.15); color: #fff; }
+    #sidebar .nav-link.active { background: rgba(124,77,255,.25); color: #b39dff; font-weight: 600; }
+    #sidebar .nav-link i { font-size: 1rem; width: 1.1rem; text-align: center; }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 1rem 1.25rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: .72rem;
+    }
+
+    /* ── Main content ── */
+    #main {
+      margin-left: 240px;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: .75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .content-area {
+      padding: 1.5rem;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .card-header {
+      background: transparent;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      padding: .85rem 1.25rem;
+    }
+
+    /* ── Stat cards ── */
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .stat-icon {
+      width: 48px; height: 48px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+    }
+    .stat-value { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+    .stat-label { color: var(--text-muted); font-size: .8rem; margin-top: .15rem; }
+
+    /* ── Tables ── */
+    .table { --bs-table-bg: transparent; }
+    .table th { border-color: var(--border); color: var(--text-muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+    .table td { border-color: var(--border); vertical-align: middle; }
+
+    /* ── Badges ── */
+    .badge-active   { background: rgba(94,234,212,.15); color: #5eead4; border: 1px solid rgba(94,234,212,.3); }
+    .badge-inactive { background: rgba(255,255,255,.06); color: #8891a8; border: 1px solid var(--border); }
+
+    /* ── Log levels ── */
+    .log-INFO    { color: #64b5f6; }
+    .log-SUCCESS { color: #5eead4; }
+    .log-WARNING { color: #ffd54f; }
+    .log-ERROR   { color: #ef5350; }
+
+    /* ── Buttons ── */
+    .btn-accent {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn-accent:hover { background: #6c3de0; border-color: #6c3de0; color: #fff; }
+
+    /* ── Alerts / Flash ── */
+    .flash-container {
+      position: fixed;
+      bottom: 1.25rem; right: 1.25rem;
+      z-index: 9999;
+      display: flex; flex-direction: column; gap: .5rem;
+    }
+    .flash-msg {
+      min-width: 280px;
+      padding: .75rem 1rem;
+      border-radius: 10px;
+      font-size: .875rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,.4);
+      animation: slideIn .2s ease;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(40px); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
+
+    /* ── Color dot preview ── */
+    .color-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      #sidebar { transform: translateX(-100%); transition: transform .25s; }
+      #sidebar.open { transform: translateX(0); }
+      #main { margin-left: 0; }
+    }
+
+    /* ── Item thumbnail ── */
+    .item-thumb {
+      width: 48px; height: 48px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: var(--border);
+    }
+
+    /* ── Scroll log box ── */
+    .log-box {
+      max-height: 520px;
+      overflow-y: auto;
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: .8rem;
+    }
+    .log-row { padding: .25rem .5rem; border-radius: 4px; }
+    .log-row:hover { background: rgba(255,255,255,.04); }
+    .log-ts { color: var(--text-muted); margin-right: .5rem; }
+
+    /* form-control dark override */
+    .form-control, .form-select {
+      background-color: #1e2130;
+      border-color: var(--border);
+      color: #dde1f0;
+    }
+    .form-control:focus, .form-select:focus {
+      background-color: #1e2130;
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 0 2px rgba(124,77,255,.25);
+    }
+    .form-label { color: #b0b8d0; font-size: .85rem; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<!-- ── SIDEBAR ──────────────────────────────── -->
+<nav id="sidebar">
+  <div class="sidebar-brand">
+    <a href="{{ url_for('index') }}" class="logo">Vinted<span>-Notification</span></a>
+    <div><small>Panel administracyjny</small></div>
+  </div>
+
+  <div class="py-2">
+    <div class="nav-section-label">Główne</div>
+    <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">
+      <i class="bi bi-grid-1x2"></i> Dashboard
+    </a>
+    <a href="{{ url_for('queries') }}" class="nav-link {% if 'quer' in request.endpoint %}active{% endif %}">
+      <i class="bi bi-search"></i> Zapytania
+    </a>
+    <a href="{{ url_for('items') }}" class="nav-link {% if request.endpoint == 'items' %}active{% endif %}">
+      <i class="bi bi-bag"></i> Przedmioty
+    </a>
+
+    <div class="nav-section-label mt-2">System</div>
+    <a href="{{ url_for('logs') }}" class="nav-link {% if request.endpoint == 'logs' %}active{% endif %}">
+      <i class="bi bi-terminal"></i> Logi
+    </a>
+    <a href="{{ url_for('settings') }}" class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}">
+      <i class="bi bi-gear"></i> Ustawienia
+    </a>
+  </div>
+
+  <div class="sidebar-footer">
+    <div>Vinted-Notification v2.0</div>
+    <div class="mt-1">
+      <span id="status-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#ef5350;margin-right:4px;"></span>
+      <span id="status-text">Łączenie…</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ── MAIN ─────────────────────────────────── -->
+<div id="main">
+  <div class="topbar">
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-secondary d-md-none" onclick="document.getElementById('sidebar').classList.toggle('open')">
+        <i class="bi bi-list"></i>
+      </button>
+      <h6 class="mb-0 fw-semibold">{% block page_title %}Dashboard{% endblock %}</h6>
+    </div>
+    <div class="d-flex align-items-center gap-2 text-muted" style="font-size:.8rem;">
+      <i class="bi bi-clock"></i>
+      <span id="clock"></span>
+    </div>
+  </div>
+
+  <div class="content-area">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+
+<!-- ── FLASH MESSAGES ─────────────────────── -->
+<div class="flash-container">
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="flash-msg alert alert-{{ 'success' if category == 'success' else 'warning' if category == 'warning' else 'danger' if category == 'error' else 'info' }} mb-0 py-2">
+    {{ message }}
+    <button type="button" class="btn-close btn-sm float-end" onclick="this.parentElement.remove()"></button>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<script>
+  // Zegar
+  function updateClock() {
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString('pl-PL');
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // Auto-remove flash messages
+  setTimeout(() => {
+    document.querySelectorAll('.flash-msg').forEach(el => {
+      el.style.opacity = '0';
+      el.style.transition = 'opacity .4s';
+      setTimeout(() => el.remove(), 400);
+    });
+  }, 4000);
+
+  // Status ping
+  async function checkStatus() {
+    try {
+      const r = await fetch('/api/stats');
+      if (r.ok) {
+        document.getElementById('status-dot').style.background = '#5eead4';
+        document.getElementById('status-text').textContent = 'Online';
+      }
+    } catch {
+      document.getElementById('status-dot').style.background = '#ef5350';
+      document.getElementById('status-text').textContent = 'Błąd połączenia';
+    }
+  }
+  setInterval(checkStatus, 10000);
+  checkStatus();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

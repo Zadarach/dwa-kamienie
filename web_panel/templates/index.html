@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- ── Stat Cards ────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(94,234,212,.12)">💰</div>
+      <div>
+        <div class="stat-value">{{ stats.total_items }}</div>
+        <div class="stat-label">Łączna liczba przedmiotów</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(124,77,255,.12)">🔍</div>
+      <div>
+        <div class="stat-value">{{ stats.active_queries }}</div>
+        <div class="stat-label">Aktywne zapytania</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(255,213,79,.1)">⚡</div>
+      <div>
+        <div class="stat-value">{{ stats.today_items }}</div>
+        <div class="stat-label">Znalezione dziś</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(100,181,246,.1)">📡</div>
+      <div>
+        <div class="stat-value">{{ queries | length }}</div>
+        <div class="stat-label">Wszystkich zapytań</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Ostatnie przedmioty -->
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-bag me-2"></i>Ostatnie przedmioty</span>
+        <a href="{{ url_for('items') }}" class="btn btn-sm btn-outline-secondary">
+          Wszystkie <i class="bi bi-arrow-right ms-1"></i>
+        </a>
+      </div>
+      <div class="card-body p-0">
+        {% if recent_items %}
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th style="width:56px"></th>
+              <th>Tytuł</th>
+              <th>Cena</th>
+              <th>Query</th>
+              <th>Kiedy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in recent_items %}
+            <tr>
+              <td>
+                {% if item.photo_url %}
+                <img src="{{ item.photo_url }}" class="item-thumb" alt="" onerror="this.style.display='none'">
+                {% else %}
+                <div class="item-thumb d-flex align-items-center justify-content-center text-muted">
+                  <i class="bi bi-image"></i>
+                </div>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{{ item.item_url }}" target="_blank" class="text-light text-decoration-none fw-semibold">
+                  {{ item.title | truncate(40) }}
+                </a>
+                <div style="font-size:.75rem;color:var(--text-muted)">{{ item.brand }}</div>
+              </td>
+              <td class="fw-semibold" style="color:var(--accent-alt)">
+                {{ item.price }} {{ item.currency }}
+              </td>
+              <td>
+                <span class="badge" style="background:rgba(124,77,255,.15);color:#b39dff;font-size:.7rem">
+                  {{ item.query_name or '—' }}
+                </span>
+              </td>
+              <td style="font-size:.78rem;color:var(--text-muted)">
+                {{ item.sent_at[:16] if item.sent_at else '—' }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi bi-bag-x" style="font-size:2.5rem;display:block;margin-bottom:.75rem"></i>
+          Brak znalezionych przedmiotów.<br>
+          <a href="{{ url_for('add_query') }}" class="btn btn-sm btn-accent mt-3">Dodaj pierwsze zapytanie</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Logi + Queries sidebar -->
+  <div class="col-lg-5">
+    <!-- Aktywne queries -->
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-search me-2"></i>Zapytania</span>
+        <a href="{{ url_for('add_query') }}" class="btn btn-sm btn-accent">
+          <i class="bi bi-plus"></i> Dodaj
+        </a>
+      </div>
+      <div class="card-body p-0">
+        {% if queries %}
+        <table class="table table-hover mb-0">
+          <tbody>
+            {% for q in queries %}
+            <tr>
+              <td style="padding:.6rem 1rem">
+                <span class="color-dot" style="background:#{{ '%06x' % q.embed_color | int }};"></span>
+                <span class="fw-semibold">{{ q.name }}</span>
+                <div style="font-size:.72rem;color:var(--text-muted)">#{{ q.channel_name }}</div>
+              </td>
+              <td class="text-end pe-3" style="vertical-align:middle">
+                <span class="badge {{ 'badge-active' if q.active else 'badge-inactive' }} px-2">
+                  {{ '● Aktywne' if q.active else '○ Wyłączone' }}
+                </span>
+              </td>
+              <td style="vertical-align:middle;color:var(--text-muted);font-size:.8rem;padding-right:1rem">
+                {{ q.items_found }}
+                <i class="bi bi-bag-fill" style="font-size:.7rem"></i>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-4 text-muted" style="font-size:.85rem">
+          Brak zapytań. <a href="{{ url_for('add_query') }}">Dodaj pierwsze</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Ostatnie logi -->
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-terminal me-2"></i>Ostatnie logi</span>
+        <a href="{{ url_for('logs') }}" class="btn btn-sm btn-outline-secondary">Wszystkie</a>
+      </div>
+      <div class="card-body p-2">
+        <div class="log-box">
+          {% for log in recent_logs %}
+          <div class="log-row">
+            <span class="log-ts">{{ log.created_at[11:19] }}</span>
+            <span class="log-{{ log.level }}">{{ log.message | truncate(70) }}</span>
+          </div>
+          {% else %}
+          <div class="text-muted text-center py-3" style="font-size:.8rem">Brak logów</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Zapytania{% endblock %}
+{% block page_title %}Zapytania ({{ queries | length }}){% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <p class="text-muted mb-0" style="font-size:.85rem">
+    Każde zapytanie to filtr z Vinted przypisany do konkretnego kanału Discord.
+  </p>
+  <div class="d-flex gap-2 flex-wrap">
+    <!-- Toggle all -->
+    <form method="POST" action="{{ url_for('toggle_all_queries') }}" class="d-inline">
+      <input type="hidden" name="action" value="enable">
+      <button type="submit" class="btn btn-sm btn-outline-success" title="Włącz wszystkie zapytania">
+        <i class="bi bi-play-fill me-1"></i>Włącz wszystkie
+      </button>
+    </form>
+    <form method="POST" action="{{ url_for('toggle_all_queries') }}" class="d-inline">
+      <input type="hidden" name="action" value="disable">
+      <button type="submit" class="btn btn-sm btn-outline-warning" title="Wyłącz wszystkie zapytania">
+        <i class="bi bi-pause-fill me-1"></i>Wyłącz wszystkie
+      </button>
+    </form>
+    <a href="{{ url_for('add_query') }}" class="btn btn-sm btn-accent">
+      <i class="bi bi-plus-lg me-1"></i>Nowe zapytanie
+    </a>
+  </div>
+</div>
+
+{% if queries %}
+<div class="row g-3">
+  {% for q in queries %}
+  <div class="col-xl-6">
+    <div class="card h-100" style="border-left: 3px solid #{{ '%06x' % (q.embed_color | int) }}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <h6 class="mb-0 fw-bold">{{ q.name }}</h6>
+            <small class="text-muted">
+              <i class="bi bi-hash"></i>{{ q.channel_name }}
+            </small>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            <!-- Toggle active -->
+            <div class="form-check form-switch mb-0">
+              <input class="form-check-input toggle-query"
+                     type="checkbox"
+                     role="switch"
+                     data-query-id="{{ q.id }}"
+                     {{ 'checked' if q.active else '' }}
+                     title="{{ 'Wyłącz' if q.active else 'Włącz' }}">
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-2" style="font-size:.78rem;">
+          <a href="{{ q.url }}" target="_blank" class="text-muted text-decoration-none text-break"
+             style="word-break:break-all">
+            <i class="bi bi-link-45deg"></i>
+            {{ q.url | truncate(80) }}
+          </a>
+        </div>
+
+        <div class="d-flex gap-3 mb-3" style="font-size:.8rem;color:var(--text-muted)">
+          <span><i class="bi bi-bag me-1"></i>{{ q.items_found }} znalezionych</span>
+          <span>
+            <span class="color-dot" style="background:#{{ '%06x' % (q.embed_color | int) }}"></span>
+            Kolor embeda
+          </span>
+          <span class="badge {{ 'badge-active' if q.active else 'badge-inactive' }}">
+            {{ '● Aktywne' if q.active else '○ Wyłączone' }}
+          </span>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+          <a href="{{ url_for('edit_query', query_id=q.id) }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-pencil me-1"></i>Edytuj
+          </a>
+          <a href="{{ url_for('items') }}?query_id={{ q.id }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-bag me-1"></i>Przedmioty
+          </a>
+          <form method="POST" action="{{ url_for('test_query_webhook', query_id=q.id) }}" class="d-inline">
+            <button type="submit" class="btn btn-sm btn-outline-primary" title="Wyślij test na Discord">
+              <i class="bi bi-discord me-1"></i>Test
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('delete_query', query_id=q.id) }}" class="d-inline"
+                onsubmit="return confirm('Usunąć zapytanie {{ q.name }}?')">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {% if q.last_item_ts %}
+      <div class="card-footer" style="font-size:.73rem;color:var(--text-muted)">
+        <i class="bi bi-clock me-1"></i>
+        Ostatni przedmiot:
+        <span id="ts-{{ q.id }}" data-ts="{{ q.last_item_ts }}"></span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="card">
+  <div class="card-body text-center py-5">
+    <div style="font-size:3rem;margin-bottom:1rem">🔍</div>
+    <h5>Brak zapytań</h5>
+    <p class="text-muted">Dodaj pierwsze zapytanie aby zacząć monitorować Vinted.</p>
+    <a href="{{ url_for('add_query') }}" class="btn btn-accent">
+      <i class="bi bi-plus-lg me-1"></i>Dodaj zapytanie
+    </a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Toggle active via AJAX
+document.querySelectorAll('.toggle-query').forEach(toggle => {
+  toggle.addEventListener('change', async function() {
+    const qid = this.dataset.queryId;
+    const resp = await fetch(`/queries/${qid}/toggle`, { method: 'POST' });
+    const data = await resp.json();
+    // update badge next to toggle
+    const card = this.closest('.card-body');
+    const badge = card.querySelector('.badge');
+    if (data.active) {
+      badge.className = 'badge badge-active';
+      badge.textContent = '● Aktywne';
+    } else {
+      badge.className = 'badge badge-inactive';
+      badge.textContent = '○ Wyłączone';
+    }
+  });
+});
+
+// Relative timestamps
+function relTime(ts) {
+  const diff = Date.now() / 1000 - ts;
+  if (diff < 60)   return 'przed chwilą';
+  if (diff < 3600) return `${Math.floor(diff/60)} min temu`;
+  if (diff < 86400) return `${Math.floor(diff/3600)} godz. temu`;
+  return `${Math.floor(diff/86400)} dni temu`;
+}
+
+document.querySelectorAll('[data-ts]').forEach(el => {
+  el.textContent = relTime(parseInt(el.dataset.ts));
+});
+</script>
+{% endblock %}

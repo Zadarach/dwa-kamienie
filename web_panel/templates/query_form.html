@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edytuj' if action == 'edit' else 'Nowe' }} zapytanie{% endblock %}
+{% block page_title %}{{ 'Edytuj' if action == 'edit' else 'Nowe' }} zapytanie{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">
+        <i class="bi bi-{{ 'pencil' if action == 'edit' else 'plus-circle' }} me-2"></i>
+        {{ 'Edycja zapytania' if action == 'edit' else 'Dodaj nowe zapytanie' }}
+      </div>
+      <div class="card-body p-4">
+
+        {% set fd = form_data %}
+        <form method="POST">
+
+          <!-- Nazwa -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              Nazwa zapytania <span class="text-danger">*</span>
+            </label>
+            <input type="text" name="name" class="form-control"
+                   placeholder="np. Stone Island czapki do 100 PLN"
+                   value="{{ fd.name or '' }}" required>
+            <div class="form-text">Nazwa wyświetlana w panelu i w footerze embeda Discord.</div>
+          </div>
+
+          <!-- URL Vinted -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              URL filtrów Vinted <span class="text-danger">*</span>
+            </label>
+            <input type="url" name="url" class="form-control"
+                   placeholder="https://www.vinted.pl/catalog?search_text=stone%20island&order=newest_first"
+                   value="{{ fd.url or '' }}" required>
+            <div class="form-text">
+              Skopiuj URL wyszukiwania z Vinted (dowolna domena: .pl, .de, .fr, .it, .es...).
+              Parametry <code>time</code>, <code>search_id</code>, <code>page</code> zostaną usunięte.
+            </div>
+          </div>
+
+          <!-- Discord Webhook URL -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              Discord Webhook URL
+              {% if discord_mode == 'bot' %}<span class="badge bg-secondary ms-1" title="Nieużywane gdy Bot API aktywny">opcjonalne</span>{% else %}<span class="text-danger">*</span>{% endif %}
+            </label>
+            <input type="url" name="webhook_url" class="form-control"
+                   placeholder="https://discord.com/api/webhooks/1234567890/token"
+                   value="{{ fd.discord_webhook_url or '' }}" {{ '' if discord_mode == 'bot' else 'required' }}>
+            <div class="form-text">
+              Używany gdy Bot API jest wyłączony. W Discord: Ustawienia kanału → Integracje → Webhooks → Skopiuj URL.
+            </div>
+          </div>
+
+          <!-- Discord Channel ID (dla Bot API) — wyszarzone, mniej widoczne -->
+          <div class="mb-3" style="opacity:0.35; pointer-events:none; user-select:none;">
+            <label class="form-label fw-semibold" style="font-size:0.82rem; color:#6c757d;">
+              Discord Channel ID
+              <span style="font-size:0.72rem; background:#2a2d3e; color:#6c757d; border:1px solid #3a3d4e; border-radius:4px; padding:1px 6px; margin-left:6px;">tylko dla Bot API</span>
+            </label>
+            <input type="text" name="discord_channel_id" class="form-control form-control-sm font-monospace"
+                   style="color:#5a5d6e; background:#1a1d2e; border-color:#2a2d3e;"
+                   placeholder="123456789012345678"
+                   value="{{ fd.discord_channel_id or '' }}" disabled>
+            <div class="form-text" style="font-size:0.75rem; color:#4a4d5e;">
+              ID kanału Discord — wymagane gdy Bot API jest aktywny (Ustawienia → Discord Bot Token).
+              Jak znaleźć: Discord → Ustawienia → Tryb dewelopera → PPM na kanał → Kopiuj ID.
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <!-- Nazwa kanału (wyświetlana) -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Nazwa kanału Discord</label>
+              <div class="input-group">
+                <span class="input-group-text" style="background:#1e2130;border-color:var(--border);color:#8891a8">#</span>
+                <input type="text" name="channel_name" class="form-control"
+                       placeholder="Stone Island 200"
+                       value="{{ fd.channel_name or '' }}">
+              </div>
+              <div class="form-text">Nazwa kanału Discord (np. <code>Stone Island 200</code>) — wyświetlana w footerze embeda.</div>
+            </div>
+
+            <!-- Kolor embeda -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Kolor embeda</label>
+              <select name="embed_color" class="form-select" id="colorSelect">
+                {% for name, val in color_presets.items() %}
+                <option value="{{ val }}" {{ 'selected' if (fd.embed_color | string) == (val | string) else '' }}>
+                  {{ name | capitalize }}
+                </option>
+                {% endfor %}
+              </select>
+              <div class="form-text">
+                Kolor paska bocznego embeda na Discord.
+                <span id="color-preview" class="color-dot ms-1" style="width:14px;height:14px"></span>
+              </div>
+            </div>
+          </div>
+
+          {% if action == 'edit' %}
+          <!-- Aktywność -->
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="active" value="1"
+                     id="activeToggle" {{ 'checked' if fd.active else '' }}>
+              <label class="form-check-label" for="activeToggle">Zapytanie aktywne</label>
+            </div>
+          </div>
+          {% endif %}
+
+          <hr style="border-color:var(--border)">
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-accent">
+              <i class="bi bi-check-lg me-1"></i>
+              {{ 'Zapisz zmiany' if action == 'edit' else 'Dodaj zapytanie' }}
+            </button>
+            <a href="{{ url_for('queries') }}" class="btn btn-outline-secondary">Anuluj</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Hint box -->
+    <div class="card mt-3" style="border-color:rgba(124,77,255,.3)">
+      <div class="card-body" style="font-size:.82rem">
+        <h6 class="fw-semibold mb-2" style="color:var(--accent)">
+          <i class="bi bi-lightbulb me-1"></i>Przykłady URL-i Vinted
+        </h6>
+        <div class="mb-1">
+          <code class="text-muted" style="font-size:.78rem">
+            https://www.vinted.pl/catalog?search_text=stone%20island&order=newest_first
+          </code>
+          <small class="ms-2 text-muted">— Stone Island (PL)</small>
+        </div>
+        <div class="mb-1">
+          <code class="text-muted" style="font-size:.78rem">
+            https://www.vinted.de/catalog?search_text=carhartt&catalog[]=4&price_to=50
+          </code>
+          <small class="ms-2 text-muted">— Carhartt kurtki (DE)</small>
+        </div>
+        <div>
+          <code class="text-muted" style="font-size:.78rem">
+            https://www.vinted.pl/catalog?brand_ids[]=73306&price_to=200
+          </code>
+          <small class="ms-2 text-muted">— Stone Island, max 200 PLN</small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Kolor preview
+const colorSelect = document.getElementById('colorSelect');
+const colorPreview = document.getElementById('color-preview');
+
+function updateColorPreview() {
+  const val = parseInt(colorSelect.value);
+  const hex = val.toString(16).padStart(6, '0');
+  colorPreview.style.background = '#' + hex;
+}
+colorSelect.addEventListener('change', updateColorPreview);
+updateColorPreview();
+</script>
+{% endblock %}

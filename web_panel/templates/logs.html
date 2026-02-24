@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Logi{% endblock %}
+{% block page_title %}Logi systemowe{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+
+  <!-- Filtry -->
+  <form method="GET" class="d-flex gap-2 align-items-center flex-wrap">
+    <select name="level" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+      {% for lvl in ['ALL', 'INFO', 'SUCCESS', 'WARNING', 'ERROR'] %}
+      <option value="{{ lvl }}" {{ 'selected' if level_filter == lvl else '' }}>
+        {{ lvl }}
+      </option>
+      {% endfor %}
+    </select>
+    <select name="limit" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+      {% for l in [100, 200, 500, 1000] %}
+      <option value="{{ l }}" {{ 'selected' if limit == l else '' }}>Ostatnie {{ l }}</option>
+      {% endfor %}
+    </select>
+  </form>
+
+  <div class="d-flex gap-2">
+    <button class="btn btn-sm btn-outline-secondary" id="toggleLive">
+      <span class="live-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#ef5350;margin-right:5px"></span>
+      Live: <span id="liveStatus">Wyłączony</span>
+    </button>
+    <form method="POST" action="{{ url_for('clear_logs') }}" onsubmit="return confirm('Wyczyścić wszystkie logi?')">
+      <button type="submit" class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-trash me-1"></i>Wyczyść
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-2">
+    <div class="log-box" id="logBox">
+      {% if logs %}
+      {% for log in logs %}
+      <div class="log-row" data-log-id="{{ log.id }}">
+        <span class="log-ts">{{ log.created_at[5:19] if log.created_at else '' }}</span>
+        <span class="badge me-1 py-0 px-1"
+              style="font-size:.65rem;background:
+                {% if log.level == 'SUCCESS' %}rgba(94,234,212,.15){% elif log.level == 'ERROR' %}rgba(239,83,80,.15){% elif log.level == 'WARNING' %}rgba(255,213,79,.12){% else %}rgba(100,181,246,.12){% endif %};
+                color:
+                {% if log.level == 'SUCCESS' %}#5eead4{% elif log.level == 'ERROR' %}#ef5350{% elif log.level == 'WARNING' %}#ffd54f{% else %}#64b5f6{% endif %}">
+          {{ log.level }}
+        </span>
+        <span class="text-muted me-2" style="font-size:.73rem">[{{ log.source }}]</span>
+        <span class="log-{{ log.level }}">{{ log.message }}</span>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="text-center text-muted py-4">Brak logów</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="text-muted mt-2" style="font-size:.72rem">
+  Pokazuje {{ logs | length }} wpisów.
+  <span id="lastUpdate"></span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let liveEnabled = false;
+let pollInterval = null;
+let maxLogId = {% if logs %}{{ logs[0].id if logs else 0 }}{% else %}0{% endif %};
+const level = '{{ level_filter }}';
+
+const toggleBtn = document.getElementById('toggleLive');
+const liveStatus = document.getElementById('liveStatus');
+const liveDot = document.querySelector('.live-dot');
+const logBox = document.getElementById('logBox');
+
+function formatLogRow(log) {
+  const levelColors = {
+    'SUCCESS': { bg: 'rgba(94,234,212,.15)', color: '#5eead4', text: '#5eead4' },
+    'ERROR':   { bg: 'rgba(239,83,80,.15)',  color: '#ef5350', text: '#ef5350' },
+    'WARNING': { bg: 'rgba(255,213,79,.12)', color: '#ffd54f', text: '#ffd54f' },
+    'INFO':    { bg: 'rgba(100,181,246,.12)',color: '#64b5f6', text: '#64b5f6' },
+  };
+  const c = levelColors[log.level] || levelColors.INFO;
+  const ts = (log.created_at || '').substring(5, 19);
+
+  return `<div class="log-row" data-log-id="${log.id}">
+    <span class="log-ts">${ts}</span>
+    <span class="badge me-1 py-0 px-1" style="font-size:.65rem;background:${c.bg};color:${c.color}">${log.level}</span>
+    <span class="text-muted me-2" style="font-size:.73rem">[${log.source}]</span>
+    <span style="color:${c.text}">${log.message}</span>
+  </div>`;
+}
+
+async function fetchNewLogs() {
+  try {
+    const url = `/api/logs?since_id=${maxLogId}&level=${level}`;
+    const resp = await fetch(url);
+    const newLogs = await resp.json();
+
+    if (newLogs.length > 0) {
+      const html = newLogs.map(formatLogRow).join('');
+      logBox.insertAdjacentHTML('afterbegin', html);
+      maxLogId = Math.max(maxLogId, ...newLogs.map(l => l.id));
+
+      document.getElementById('lastUpdate').textContent =
+        `• Ostatnia aktualizacja: ${new Date().toLocaleTimeString('pl-PL')}`;
+
+      // Ogranicz do 500 wierszy w DOM
+      const rows = logBox.querySelectorAll('.log-row');
+      if (rows.length > 500) {
+        for (let i = 500; i < rows.length; i++) rows[i].remove();
+      }
+    }
+  } catch (e) {
+    console.error('Log poll error:', e);
+  }
+}
+
+toggleBtn.addEventListener('click', () => {
+  liveEnabled = !liveEnabled;
+  if (liveEnabled) {
+    liveStatus.textContent = 'Aktywny';
+    liveDot.style.background = '#5eead4';
+    pollInterval = setInterval(fetchNewLogs, 3000);
+    fetchNewLogs();
+  } else {
+    liveStatus.textContent = 'Wyłączony';
+    liveDot.style.background = '#ef5350';
+    clearInterval(pollInterval);
+  }
+});
+
+// Auto-włącz Live przy wejściu na stronę
+toggleBtn.click();
+</script>
+{% endblock %}
