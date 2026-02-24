@@ -1,6 +1,6 @@
 """
 core.py - Logika scrapowania Vinted.
-NAPRAWIONO: Mechanizm deduplikacji (zapobieganie podwójnym wysyłkom).
+WERSJA: 3.1 - Naprawiona deduplikacja, ochrona przed podwójnymi wysyłkami
 """
 import time
 import queue
@@ -236,7 +236,6 @@ def _fetch_items(query_url: str, per_page: int = 20):
 
             items = [Item(it, domain=domain) for it in data.get("items", [])]
 
-            # Enrichment: oceny sprzedających
             users_to_fetch = {
                 it.user_id for it in items
                 if it.user_id and it.feedback_count == 0
@@ -364,7 +363,6 @@ def process_items_queue():
 
         try:
             # 🔒 PODWÓJNE SPRAWDZENIE BAZY PRZED WYSYŁKĄ
-            # To jest kluczowe, aby uniknąć duplikatów przy restarcie bota
             vinted_id_str = str(item.id)
             if db.item_exists(vinted_id_str):
                 logger.debug(f"Duplikat (DB check przed wysyłką): {vinted_id_str}")
@@ -392,7 +390,6 @@ def process_items_queue():
 
             if success:
                 # ✅ NATYCHMIASTOWY ZAPIS DO BAZY PO WYSYŁCE
-                # Najpierw zapisujemy ID, żeby nawet przy crashu nie wysłać ponownie
                 db.add_item(
                     vinted_id=vinted_id_str,
                     title=item.title,
@@ -407,7 +404,6 @@ def process_items_queue():
                     timestamp=item.raw_timestamp,
                 )
                 
-                # Aktualizacja metryk i logów
                 if _metrics:
                     _metrics["items_sent_total"] += 1
                     
