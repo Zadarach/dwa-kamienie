@@ -1,18 +1,62 @@
 {% extends "base.html" %}
 {% block title %}Śledzeni Sprzedawcy{% endblock %}
+{% block page_title %}👤 Śledzeni Sprzedawcy{% endblock %}
+
 {% block content %}
-<h1>👤 Śledzeni Sprzedawcy</h1>
-<a href="{{ url_for('add_seller') }}" class="btn btn-primary">Dodaj Sprzedawcę</a>
-<table>
-    <tr><th>ID</th><th>Username</th><th>User ID</th><th>Aktywny</th><th>Akcje</th></tr>
-    {% for s in sellers %}
-    <tr>
-        <td>{{ s.id }}</td>
-        <td>{{ s.username }}</td>
-        <td>{{ s.user_id }}</td>
-        <td>{{ "✅" if s.active else "❌" }}</td>
-        <td><a href="{{ url_for('delete_seller', id=s.id) }}">Usuń</a></td>
-    </tr>
-    {% endfor %}
-</table>
+<div class="max-w-6xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl font-bold">Śledzeni Sprzedawcy</h2>
+        <a href="{{ url_for('add_seller') }}" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">➕ Dodaj Sprzedawcę</a>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-gray-700">
+                <tr>
+                    <th class="px-4 py-3 text-left">ID</th>
+                    <th class="px-4 py-3 text-left">Username</th>
+                    <th class="px-4 py-3 text-left">User ID</th>
+                    <th class="px-4 py-3 text-left">Webhook</th>
+                    <th class="px-4 py-3 text-left">Ostatnie sprawdzenie</th>
+                    <th class="px-4 py-3 text-left">Status</th>
+                    <th class="px-4 py-3 text-left">Akcje</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sellers %}
+                <tr class="border-t border-gray-700">
+                    <td class="px-4 py-3">{{ s.id }}</td>
+                    <td class="px-4 py-3">{{ s.username }}</td>
+                    <td class="px-4 py-3 font-mono text-sm">{{ s.user_id }}</td>
+                    <td class="px-4 py-3 text-sm truncate max-w-xs">{{ s.discord_webhook_url[:50] }}...</td>
+                    <td class="px-4 py-3 text-sm">
+                        {% if s.last_check %}
+                            {{ (s.last_check | int - now | int) // 60 }} min temu
+                        {% else %}
+                            Nigdy
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">{{ "✅ Aktywny" if s.active else "❌ Nieaktywny" }}</td>
+                    <td class="px-4 py-3">
+                        <a href="{{ url_for('delete_seller', id=s.id) }}" class="text-red-400 hover:text-red-300" onclick="return confirm('Usunąć tego sprzedawcę?')">🗑️ Usuń</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="px-4 py-8 text-center text-gray-400">Brak śledzonych sprzedawców. Dodaj pierwszego!</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-6 bg-blue-900/30 border border-blue-700 p-4 rounded-lg">
+        <h3 class="font-bold mb-2">💡 Jak znaleźć User ID sprzedawcy?</h3>
+        <ol class="list-decimal list-inside text-sm space-y-1 text-gray-300">
+            <li>Wejdź na profil sprzedawcy na Vinted</li>
+            <li>Skopiuj URL z paska adresu (np. <code>https://www.vinted.pl/members/12345678-stone-island-fan</code>)</li>
+            <li>User ID to liczba przed myślnikiem (np. <code>12345678</code>)</li>
+        </ol>
+    </div>
+</div>
 {% endblock %}
