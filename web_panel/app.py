@@ -20,7 +20,6 @@ def get_db():
     return conn
 
 def init_config_defaults():
-    """Inicjalizuje domyślne wartości konfiguracji."""
     conn = get_db()
     c = conn.cursor()
     
@@ -59,7 +58,6 @@ def queries():
     conn = get_db()
     all_queries = conn.execute("SELECT * FROM queries ORDER BY id DESC").fetchall()
     
-    # Pobierz liczbę URLi dla każdego zapytania
     queries_with_urls = []
     for q in all_queries:
         url_count = conn.execute("SELECT COUNT(*) FROM query_urls WHERE query_id = ?", (q["id"],)).fetchone()[0]
@@ -79,7 +77,6 @@ def add_query():
         color = request.form.get("embed_color", "5763719")
         active = 1 if request.form.get("active") else 0
         
-        # Obsługa wielu URLi (oddzielone enterem lub przecinkiem)
         urls_raw = request.form.get("urls", "")
         urls = [u.strip() for u in urls_raw.replace(",", "\n").split("\n") if u.strip()]
         
@@ -106,7 +103,6 @@ def edit_query(id):
         color = request.form.get("embed_color", "5763719")
         active = 1 if request.form.get("active") else 0
         
-        # Obsługa wielu URLi
         urls_raw = request.form.get("urls", "")
         urls = [u.strip() for u in urls_raw.replace(",", "\n").split("\n") if u.strip()]
         
