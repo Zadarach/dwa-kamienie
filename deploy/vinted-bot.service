@@ -1,0 +1,29 @@
+[Unit]
+Description=Vinted Notification Bot
+Documentation=https://github.com/Zadarach/dwa-kamienie
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/vinted-bot
+Environment="PATH=/root/vinted-bot/venv/bin"
+ExecStart=/root/vinted-bot/venv/bin/python3 /root/vinted-bot/main.py
+Restart=always
+RestartSec=10
+WatchdogSec=60
+NotifyAccess=all
+
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vinted-bot
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/root/vinted-bot/data
+
+[Install]
+WantedBy=multi-user.target
