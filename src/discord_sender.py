@@ -11,18 +11,18 @@ logger = get_logger("discord")
 _http_session = requests.Session()
 
 COLOR_PRESETS = {
-    "zielony":   0x57F287,
+    "zielony": 0x57F287,
     "niebieski": 0x3498DB,
     "fioletowy": 0x9B59B6,
-    "czerwony":  0xE74C3C,
+    "czerwony": 0xE74C3C,
     "pomarańcz": 0xE67E22,
-    "żółty":     0xF1C40F,
-    "różowy":    0xFF6B9D,
-    "biały":     0xFFFFFF,
-    "szary":     0x95A5A6,
-    "czarny":    0x2C3E50,
-    "turkus":    0x1ABC9C,
-    "złoty":     0xFFD700,
+    "żółty": 0xF1C40F,
+    "różowy": 0xFF6B9D,
+    "biały": 0xFFFFFF,
+    "szary": 0x95A5A6,
+    "czarny": 0x2C3E50,
+    "turkus": 0x1ABC9C,
+    "złoty": 0xFFD700,
 }
 
 def _parse_color(color_str: str) -> int:
@@ -79,8 +79,6 @@ def send_item_to_discord(item, webhook_url: str, query_name: str = "", embed_col
 
     return _send_webhook(webhook_url, {"embeds": embeds})
 
-# ── FUNKCJA 2: Alert o obniżce ceny ────────────────────────────────
-
 def send_price_drop_alert(item, webhook_url: str, drop_amount: float, old_price: float) -> bool:
     """Wysyła alert o obniżce ceny."""
     try:
@@ -92,7 +90,7 @@ def send_price_drop_alert(item, webhook_url: str, drop_amount: float, old_price:
     embed = {
         "title": f"💰 OBNIŻKA CENY! {item.title}",
         "url": item.url,
-        "color": 0x00FF00,  # Zielony
+        "color": 0x00FF00,
         "fields": [
             {"name": "💸 Stara cena", "value": f"~~{old_price:.2f} {item.currency}~~", "inline": True},
             {"name": "🏷️ Nowa cena", "value": f"**{item.price} {item.currency}**", "inline": True},
@@ -110,15 +108,13 @@ def send_price_drop_alert(item, webhook_url: str, drop_amount: float, old_price:
     
     return _send_webhook(webhook_url, {"embeds": [embed]})
 
-# ── FUNKCJA 1: Alert o nowym przedmiocie od sprzedawcy ────────────
-
 def send_seller_alert(item, webhook_url: str) -> bool:
     """Wysyła alert o nowym przedmiocie od śledzonego sprzedawcy."""
     embed = {
         "author": {"name": f"👤 {item.user_login}", "url": item.user_url or item.url},
         "title": f"🆕 NOWY PRZEDMIOT! {item.title}",
         "url": item.url,
-        "color": 0xFFD700,  # Złoty
+        "color": 0xFFD700,
         "fields": [
             {"name": "💰 Cena", "value": f"**{item.price} {item.currency}**", "inline": True},
             {"name": "📐 Rozmiar", "value": item.size_title or "—", "inline": True},
@@ -131,7 +127,7 @@ def send_seller_alert(item, webhook_url: str) -> bool:
     if item.photos:
         embed["image"] = {"url": item.photos[0]}
     
-    embed["footer"] = {"text": " Śledzony sprzedawca"}
+    embed["footer"] = {"text": "👤 Śledzony sprzedawca"}
     
     return _send_webhook(webhook_url, {"embeds": [embed]})
 
