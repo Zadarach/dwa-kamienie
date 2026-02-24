@@ -1,6 +1,6 @@
 """
 discord_sender.py - Wysyłanie powiadomień na Discord przez Webhooks.
-ZMODYFIKOWANO: Format daty na polski, naprawa układu gwiazdek.
+WERSJA: 3.1 - Polska data tekstowa, naprawione gwiazdki
 """
 import time
 import requests
@@ -11,18 +11,10 @@ logger = get_logger("discord")
 _http_session = requests.Session()
 
 COLOR_PRESETS = {
-    "zielony":   0x57F287,
-    "niebieski": 0x3498DB,
-    "fioletowy": 0x9B59B6,
-    "czerwony":  0xE74C3C,
-    "pomarańcz": 0xE67E22,
-    "żółty":     0xF1C40F,
-    "różowy":    0xFF6B9D,
-    "biały":     0xFFFFFF,
-    "szary":     0x95A5A6,
-    "czarny":    0x2C3E50,
-    "turkus":    0x1ABC9C,
-    "złoty":     0xFFD700,
+    "zielony":   0x57F287, "niebieski": 0x3498DB, "fioletowy": 0x9B59B6,
+    "czerwony":  0xE74C3C, "pomarańcz": 0xE67E22, "żółty":     0xF1C40F,
+    "różowy":    0xFF6B9D, "biały":     0xFFFFFF, "szary":     0x95A5A6,
+    "czarny":    0x2C3E50, "turkus":    0x1ABC9C, "złoty":     0xFFD700,
 }
 
 def _parse_color(color_str: str) -> int:
@@ -37,7 +29,7 @@ def _parse_color(color_str: str) -> int:
             return COLOR_PRESETS["zielony"]
 
 def _format_polish_date(timestamp: int) -> str:
-    """Konwertuje timestamp na format: poniedziałek, 23 lutego 2026 20:46"""
+    """Konwertuje timestamp na: poniedziałek, 24 lutego 2026 01:49"""
     try:
         dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).astimezone()
     except Exception:
@@ -52,12 +44,12 @@ def _format_polish_date(timestamp: int) -> str:
     }
     
     day_name = days.get(dt.weekday(), 'dzień')
-    month_name = months.get(dt.month, 'miesiąca')
+    month_name = months.get(dt.month(), 'miesiąca')
     
     return f"{day_name}, {dt.day} {month_name} {dt.year} {dt.hour}:{dt.minute:02d}"
 
 def _format_time_ago(timestamp: int) -> str:
-    """Konwertuje timestamp na format: 5 godzin temu"""
+    """Konwertuje timestamp na: 5 godzin temu"""
     try:
         dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
         now = datetime.now(timezone.utc)
@@ -72,8 +64,8 @@ def _format_time_ago(timestamp: int) -> str:
             hours = int(diff // 3600)
             return f"{hours} godzin{'y' if hours != 1 else ''} temu"
         else:
-            days = int(diff // 86400)
-            return f"{days} dni temu"
+            days_count = int(diff // 86400)
+            return f"{days_count} dni temu"
     except Exception:
         return ""
 
@@ -85,7 +77,7 @@ def send_item_to_discord(
 ) -> bool:
     color = _parse_color(embed_color)
     
-    # ── Ocena sprzedającego (Poprawiona logika gwiazdek) ──────────────────
+    # ── Ocena sprzedającego (POPRAWIONE GWIAZDKI) ──────────────────
     if item.feedback_count > 0:
         score = min(item.feedback_score, 5.0)
         full_stars = int(score)
@@ -105,7 +97,7 @@ def send_item_to_discord(
     # ── Sprzedający z flagą ───────────────────────────────────────────────
     seller_name = f"{item.country_flag} {item.user_login}" if item.user_login else "🌍 —"
 
-    # ── Daty ──────────────────────────────────────────────────────────────
+    # ── DATY - POLSKI FORMAT TEKSTOWY (NIE <t:...>!) ─────────────────────
     polish_date = _format_polish_date(item.raw_timestamp)
     time_ago = _format_time_ago(item.raw_timestamp)
     date_value = f"{polish_date}\n{time_ago}"
