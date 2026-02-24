@@ -1,6 +1,6 @@
 """
-main.py - Vinted-Notification v4.0
-FUNKCJE: Seller tracking + Price drop + Fast scan (8s)
+main.py - Vinted-Notification v4.1
+FUNKCJE: Seller tracking + Price drop + Fast scan (8s default) + Hidden items detection
 """
 import asyncio
 import threading
@@ -73,7 +73,7 @@ def _setup_sighup():
     main_log.info("📡 SIGHUP handler aktywny (kill -HUP %d)", os.getpid())
 
 async def async_scraper():
-    """Async scraper — FUNKCJA 3: Domyślnie 8s zamiast 60s!"""
+    """Async scraper — OPTYMALIZACJA v4.1: Domyślnie 8s zamiast 60s!"""
     from src.core import scrape_all_queries, scrape_tracked_sellers, warmup
     enable_db_logging()
     main_log.info("▶ Scraper uruchomiony (async)")
@@ -152,7 +152,7 @@ def thread_health():
 
 async def async_main():
     main_log.info("=" * 52)
-    main_log.info("  Vinted-Notification v4.0 — FAST SCAN MODE")
+    main_log.info("  Vinted-Notification v4.1 — FAST SCAN MODE")
     main_log.info("=" * 52)
     db.init_db()
     enable_db_logging()
