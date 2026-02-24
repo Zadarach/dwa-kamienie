@@ -14,12 +14,29 @@ app.secret_key = os.urandom(24)
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "vinted_notification.db")
 
+# Presety kolorów Discorda
+COLOR_PRESETS = {
+    "zielony":   0x57F287,
+    "niebieski": 0x3498DB,
+    "fioletowy": 0x9B59B6,
+    "czerwony":  0xE74C3C,
+    "pomarańcz": 0xE67E22,
+    "żółty":     0xF1C40F,
+    "różowy":    0xFF6B9D,
+    "biały":     0xFFFFFF,
+    "szary":     0x95A5A6,
+    "czarny":    0x2C3E50,
+    "turkus":    0x1ABC9C,
+    "złoty":     0xFFD700,
+}
+
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_config_defaults():
+    """Inicjalizuje domyślne wartości konfiguracji."""
     conn = get_db()
     c = conn.cursor()
     
@@ -70,13 +87,18 @@ def queries():
 
 @app.route("/query/add", methods=["GET", "POST"])
 def add_query():
+    # Sprawdź tryb Discord (bot czy webhook)
+    discord_mode = check_discord_mode()
+    
     if request.method == "POST":
         name = request.form["name"]
         webhook = request.form["webhook_url"]
         channel = request.form.get("channel_name", name)
+        channel_id = request.form.get("channel_id", "")
         color = request.form.get("embed_color", "5763719")
         active = 1 if request.form.get("active") else 0
         
+        # Obsługa wielu URLi (oddzielone enterem lub przecinkiem)
         urls_raw = request.form.get("urls", "")
         urls = [u.strip() for u in urls_raw.replace(",", "\n").split("\n") if u.strip()]
         
@@ -85,24 +107,49 @@ def add_query():
             return redirect(url_for("add_query"))
         
         import src.database as db
-        db.add_query(name, webhook, channel, color, urls, active)
+        query_id = db.add_query(name, webhook, channel_id, color, urls, active)
+        
+        # Dodaj nazwę kanału do bazy (jeśli używasz bot API)
+        if channel:
+            conn = get_db()
+            conn.execute("UPDATE queries SET discord_channel_name = ? WHERE id = ?", (channel, query_id))
+            conn.commit()
+            conn.close()
         
         flash("✅ Dodano zapytanie!", "success")
         return redirect(url_for("queries"))
     
-    return render_template("query_form.html")
+    # GET - wyświetl formularz
+    form_data = {
+        "name": "",
+        "webhook_url": "",
+        "channel_id": "",
+        "channel_name": "",
+        "embed_color": "5763719",
+        "active": 1,
+        "urls": []
+    }
+    
+    return render_template("query_form.html", 
+                         action="add", 
+                         form_data=form_data, 
+                         discord_mode=discord_mode,
+                         color_presets=COLOR_PRESETS)
 
 @app.route("/query/edit/<int:id>", methods=["GET", "POST"])
 def edit_query(id):
+    discord_mode = check_discord_mode()
     conn = get_db()
     
     if request.method == "POST":
         name = request.form["name"]
         webhook = request.form["webhook_url"]
         channel = request.form.get("channel_name", name)
+        channel_id = request.form.get("channel_id", "")
         color = request.form.get("embed_color", "5763719")
         active = 1 if request.form.get("active") else 0
         
+        # Obsługa wielu URLi
         urls_raw = request.form.get("urls", "")
         urls = [u.strip() for u in urls_raw.replace(",", "\n").split("\n") if u.strip()]
         
@@ -111,16 +158,40 @@ def edit_query(id):
             return redirect(url_for("edit_query", id=id))
         
         import src.database as db
-        db.update_query(id, name, webhook, channel, color, urls, active)
+        db.update_query(id, name, webhook, channel_id, color, urls, active)
+        
+        # Aktualizuj nazwę kanału
+        conn.execute("UPDATE queries SET discord_channel_name = ? WHERE id = ?", (channel, id))
+        conn.commit()
+        conn.close()
         
         flash("✅ Zaktualizowano zapytanie!", "success")
         return redirect(url_for("queries"))
     
+    # GET - załaduj istniejące dane
     query = conn.execute("SELECT * FROM queries WHERE id = ?", (id,)).fetchone()
     urls = conn.execute("SELECT url FROM query_urls WHERE query_id = ?", (id,)).fetchall()
     conn.close()
     
-    return render_template("query_form.html", query=query, urls=[u["url"] for u in urls])
+    if not query:
+        flash("❌ Nie znaleziono zapytania!", "error")
+        return redirect(url_for("queries"))
+    
+    form_data = {
+        "name": query["name"],
+        "webhook_url": query["discord_webhook_url"],
+        "channel_id": query["discord_channel_id"],
+        "channel_name": query["discord_channel_name"],
+        "embed_color": query["embed_color"],
+        "active": query["active"],
+        "urls": [u["url"] for u in urls]
+    }
+    
+    return render_template("query_form.html", 
+                         action="edit", 
+                         form_data=form_data, 
+                         discord_mode=discord_mode,
+                         color_presets=COLOR_PRESETS)
 
 @app.route("/query/delete/<int:id>")
 def delete_query(id):
@@ -184,6 +255,15 @@ def api_stats():
     }
     conn.close()
     return jsonify(stats)
+
+def check_discord_mode():
+    """Sprawdza czy bot Discord jest skonfigurowany."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT value FROM config WHERE key = 'discord_bot_token'")
+    row = c.fetchone()
+    conn.close()
+    return "bot" if row and row[0].strip() else "webhook"
 
 def run_panel(host="0.0.0.0", port=8080, debug=False):
     init_config_defaults()
