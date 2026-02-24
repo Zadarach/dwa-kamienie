@@ -269,5 +269,35 @@ def run_panel(host="0.0.0.0", port=8080, debug=False):
     init_config_defaults()
     app.run(host=host, port=port, debug=debug, threaded=True)
 
+@app.route("/sellers")
+def sellers():
+    """Panel śledzonych sprzedawców"""
+    conn = get_db()
+    all_sellers = conn.execute("SELECT * FROM tracked_sellers ORDER BY id DESC").fetchall()
+    conn.close()
+    return render_template("sellers.html", sellers=all_sellers)
+
+@app.route("/seller/add", methods=["GET", "POST"])
+def add_seller():
+    if request.method == "POST":
+        user_id = request.form["user_id"]
+        username = request.form["username"]
+        webhook = request.form.get("webhook_url", "")
+        active = 1 if request.form.get("active") else 0
+        import src.database as db
+        db.add_tracked_seller(user_id, username, webhook, active)
+        flash("✅ Dodano sprzedawcę!", "success")
+        return redirect(url_for("sellers"))
+    return render_template("seller_form.html")
+
+@app.route("/price-tracking")
+def price_tracking():
+    """Panel śledzenia cen"""
+    conn = get_db()
+    tracks = conn.execute("SELECT * FROM price_tracking WHERE active = 1 ORDER BY updated_at DESC LIMIT 100").fetchall()
+    stats = db.get_price_tracking_stats()
+    conn.close()
+    return render_template("price_tracking.html", tracks=tracks, stats=stats)
+
 if __name__ == "__main__":
     run_panel()
