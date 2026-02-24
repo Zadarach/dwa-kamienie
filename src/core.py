@@ -1,6 +1,6 @@
 """
 core.py - Logika scrapowania Vinted.
-WERSJA: 4.0 - Seller tracking + Price drop + Fast scan (5-8s)
+WERSJA: 4.0 — Wykrywanie ukrytych ofert + Seller Tracking + Price Drop
 """
 import time
 import queue
@@ -116,6 +116,7 @@ def _build_api_params(query_url: str, per_page: int) -> list:
     api_params.append(("per_page", str(per_page)))
     if not any(k == "order" for k, _ in api_params):
         api_params.append(("order", "newest_first"))
+    # UKRYTE OFERTY - KLUCZOWE!
     api_params.append(("with_disabled_items", "1"))
     return api_params
 
@@ -208,6 +209,13 @@ def _fetch_items(query_url: str, per_page: int = 20):
                 time.sleep(backoff(attempt))
                 continue
             items = [Item(it, domain=domain) for it in data.get("items", [])]
+            # LOGOWANIE UKRYTYCH OFERT
+            hidden_count = sum(1 for it in items if it.is_hidden)
+            if hidden_count > 0:
+                logger.warning(f"🔒 Znaleziono {hidden_count}/{len(items)} ukrytych ofert!")
+                for it in items:
+                    if it.is_hidden:
+                        db.add_log("INFO", "hidden_found", f"🔒 {it.title} — {it.price} {it.currency}")
             users_to_fetch = {it.user_id for it in items if it.user_id and it.feedback_count == 0}
             if users_to_fetch:
                 def _fetch_one(uid):
@@ -238,6 +246,7 @@ def _fetch_items(query_url: str, per_page: int = 20):
     return []
 
 def _fetch_seller_items(user_id: int, domain: str = "pl", per_page: int = 20):
+    """Pobiera przedmioty od konkretnego sprzedawcy."""
     api_url = f"https://www.vinted.{domain}/api/v2/users/{user_id}/items"
     sm = _get_session_manager(domain)
     params = [("per_page", str(per_page)), ("order", "newest_first")]
@@ -320,6 +329,7 @@ def scrape_all_queries():
                 logger.error(f"Błąd future: {e}")
 
 def scrape_tracked_sellers():
+    """Skruje przedmioty od śledzonych sprzedawców."""
     sellers = db.get_tracked_sellers(active_only=True)
     if not sellers:
         return
@@ -397,6 +407,10 @@ def process_items_queue():
                     username=item.user_login)
                 if _metrics:
                     _metrics["items_sent_total"] += 1
+                # ALERT DLA UKRYTYCH OFERT
+                if item.is_hidden:
+                    logger.warning(f"🔒 WYSŁANO UKRYTĄ OFERTĘ: {item.title}")
+                    db.add_log("WARNING", "hidden_sent", f"🔒 {item.title} — wymaga weryfikacji!")
                 hidden_tag = " [UKRYTY]" if item.is_hidden else ""
                 db.update_query_last_ts(query_id, item.raw_timestamp)
                 db.increment_query_items_found(query_id)
