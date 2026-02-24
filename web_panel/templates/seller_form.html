@@ -1,12 +1,45 @@
 {% extends "base.html" %}
 {% block title %}Dodaj Sprzedawcę{% endblock %}
+{% block page_title %}➕ Dodaj Sprzedawcę{% endblock %}
+
 {% block content %}
-<h1>➕ Dodaj Sprzedawcę</h1>
-<form method="POST">
-    <input type="text" name="user_id" placeholder="User ID (z URL profilu)" required>
-    <input type="text" name="username" placeholder="Nazwa użytkownika" required>
-    <input type="url" name="webhook_url" placeholder="Discord Webhook (opcjonalne)">
-    <label><input type="checkbox" name="active" checked> Aktywny</label>
-    <button type="submit">Dodaj</button>
-</form>
+<div class="max-w-2xl mx-auto">
+    <form method="POST" class="bg-gray-800 p-6 rounded-lg space-y-4">
+        <div>
+            <label class="block text-sm font-medium mb-1">User ID sprzedawcy *</label>
+            <input type="text" name="user_id" placeholder="12345678" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" required>
+            <p class="text-xs text-gray-400 mt-1">Liczba z URL profilu (np. <code>vinted.pl/members/12345678-username</code>)</p>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium mb-1">Nazwa użytkownika *</label>
+            <input type="text" name="username" placeholder="stone_island_fan" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" required>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium mb-1">Discord Webhook URL (opcjonalne)</label>
+            <input type="url" name="webhook_url" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
+            <p class="text-xs text-gray-400 mt-1">Jeśli puste, użyje domyślnego webhooka z Settings</p>
+        </div>
+
+        <div class="flex items-center">
+            <input type="checkbox" name="active" id="active" checked class="mr-2 h-4 w-4">
+            <label for="active" class="text-sm">Aktywny</label>
+        </div>
+
+        <div class="flex gap-3 pt-4">
+            <button type="submit" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">Dodaj sprzedawcę</button>
+            <a href="{{ url_for('sellers') }}" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded">Anuluj</a>
+        </div>
+    </form>
+
+    <div class="mt-6 bg-yellow-900/30 border border-yellow-700 p-4 rounded-lg">
+        <h3 class="font-bold mb-2">⚠️ Ważne informacje</h3>
+        <ul class="list-disc list-inside text-sm space-y-1 text-gray-300">
+            <li>Sprzedawcy są skanowani razem z głównymi zapytaniami</li>
+            <li>Nowe przedmioty od sprzedawców mają złoty kolor embeda</li>
+            <li>Możesz śledzić maksymalnie 50 sprzedawców jednocześnie</li>
+        </ul>
+    </div>
+</div>
 {% endblock %}
