@@ -1,6 +1,6 @@
 """
 web_panel/app.py - Flask panel webowy.
-WERSJA: 4.1 - Naprawione błędy formatowania + Seller/Price tracking endpoints
+WERSJA: 4.1 - Naprawione błędy + Seller/Price tracking endpoints
 """
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 import sqlite3
