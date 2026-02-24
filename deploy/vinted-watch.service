@@ -1,0 +1,40 @@
+# /etc/systemd/system/vinted-watch.service
+# Kopiuj do: sudo cp deploy/vinted-watch.service /etc/systemd/system/
+# Następnie:  sudo systemctl daemon-reload && sudo systemctl enable --now vinted-watch
+
+[Unit]
+Description=VintedWatch — monitor ofert Vinted
+After=network-online.target
+Wants=network-online.target
+# Poczekaj na internet przed startem
+After=network.target
+
+[Service]
+Type=simple
+User=dietpi
+# !! Zmień ścieżkę jeśli projekt jest gdzie indziej !!
+WorkingDirectory=/home/dietpi/vinted-watch
+ExecStart=/home/dietpi/vinted-watch/venv/bin/python main.py
+
+# Restart automatyczny przy crash/błędzie
+Restart=on-failure
+RestartSec=15s
+# Max 5 restartów w ciągu 5 minut
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Logi dostępne przez: sudo journalctl -u vinted-watch -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vinted-watch
+
+# Limit pamięci (RPi 3b ma 1GB RAM, bot potrzebuje ~80MB)
+MemoryMax=200M
+MemorySwapMax=0
+
+# Środowisko
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=multi-user.target

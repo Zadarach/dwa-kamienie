@@ -1,0 +1,51 @@
+# /etc/systemd/system/vinted-notification.service
+# Kopiuj do: sudo cp deploy/vinted-notification.service /etc/systemd/system/
+# Następnie:  sudo systemctl daemon-reload && sudo systemctl enable --now vinted-notification
+#
+# Hot-reload konfiguracji:  sudo systemctl reload vinted-notification
+# (wysyła SIGHUP → przeładowuje config, proxy, bot token)
+
+[Unit]
+Description=Vinted-Notification v3.0 — real-time Vinted listing notifications
+After=network-online.target
+Wants=network-online.target
+After=network.target
+
+[Service]
+# notify = SD_NOTIFY (bot wysyła READY=1 po starcie, WATCHDOG=1 co skan)
+Type=notify
+User=dietpi
+# !! Zmień ścieżkę jeśli projekt jest gdzie indziej !!
+WorkingDirectory=/home/dietpi/vinted-notification
+ExecStart=/home/dietpi/vinted-notification/venv/bin/python main.py
+
+# SIGHUP → hot-reload konfiguracji (bez restartu procesu)
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Watchdog — jeśli brak heartbeata przez 3 minuty → restart
+WatchdogSec=180
+
+# Restart automatyczny przy crash/błędzie
+Restart=on-failure
+RestartSec=15s
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Logi dostępne przez: sudo journalctl -u vinted-notification -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vinted-notification
+
+# Limit pamięci (RPi 3b ma 1GB RAM, bot potrzebuje ~65-80MB po optymalizacji)
+MemoryMax=200M
+MemorySwapMax=0
+
+# Środowisko
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+# Tryb HEADLESS — wyłącza Flask, oszczędza ~35MB RAM.
+# Usuń tę linię lub ustaw =0 jeśli chcesz panel webowy.
+Environment=HEADLESS=1
+
+[Install]
+WantedBy=multi-user.target
