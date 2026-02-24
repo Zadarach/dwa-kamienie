@@ -1,6 +1,6 @@
 """
 discord_sender.py - Wysyłanie powiadomień na Discord przez Webhooks.
-WERSJA: 3.1 - Polska data tekstowa, naprawione gwiazdki
+WERSJA: 3.4 - Tylko dynamiczne odliczanie (bez godziny i daty)
 """
 import time
 import requests
@@ -11,10 +11,18 @@ logger = get_logger("discord")
 _http_session = requests.Session()
 
 COLOR_PRESETS = {
-    "zielony":   0x57F287, "niebieski": 0x3498DB, "fioletowy": 0x9B59B6,
-    "czerwony":  0xE74C3C, "pomarańcz": 0xE67E22, "żółty":     0xF1C40F,
-    "różowy":    0xFF6B9D, "biały":     0xFFFFFF, "szary":     0x95A5A6,
-    "czarny":    0x2C3E50, "turkus":    0x1ABC9C, "złoty":     0xFFD700,
+    "zielony":   0x57F287,
+    "niebieski": 0x3498DB,
+    "fioletowy": 0x9B59B6,
+    "czerwony":  0xE74C3C,
+    "pomarańcz": 0xE67E22,
+    "żółty":     0xF1C40F,
+    "różowy":    0xFF6B9D,
+    "biały":     0xFFFFFF,
+    "szary":     0x95A5A6,
+    "czarny":    0x2C3E50,
+    "turkus":    0x1ABC9C,
+    "złoty":     0xFFD700,
 }
 
 def _parse_color(color_str: str) -> int:
@@ -28,47 +36,6 @@ def _parse_color(color_str: str) -> int:
         except ValueError:
             return COLOR_PRESETS["zielony"]
 
-def _format_polish_date(timestamp: int) -> str:
-    """Konwertuje timestamp na: poniedziałek, 24 lutego 2026 01:49"""
-    try:
-        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).astimezone()
-    except Exception:
-        dt = datetime.now()
-    
-    months = {
-        1: 'stycznia', 2: 'lutego', 3: 'marca', 4: 'kwietnia', 5: 'maja', 6: 'czerwca',
-        7: 'lipca', 8: 'sierpnia', 9: 'września', 10: 'października', 11: 'listopada', 12: 'grudnia'
-    }
-    days = {
-        0: 'poniedziałek', 1: 'wtorek', 2: 'środa', 3: 'czwartek', 4: 'piątek', 5: 'sobota', 6: 'niedziela'
-    }
-    
-    day_name = days.get(dt.weekday(), 'dzień')
-    month_name = months.get(dt.month(), 'miesiąca')
-    
-    return f"{day_name}, {dt.day} {month_name} {dt.year} {dt.hour}:{dt.minute:02d}"
-
-def _format_time_ago(timestamp: int) -> str:
-    """Konwertuje timestamp na: 5 godzin temu"""
-    try:
-        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-        now = datetime.now(timezone.utc)
-        diff = (now - dt).total_seconds()
-        
-        if diff < 60:
-            return "przed chwilą"
-        elif diff < 3600:
-            mins = int(diff // 60)
-            return f"{mins} minut{'y' if mins != 1 else ''} temu"
-        elif diff < 86400:
-            hours = int(diff // 3600)
-            return f"{hours} godzin{'y' if hours != 1 else ''} temu"
-        else:
-            days_count = int(diff // 86400)
-            return f"{days_count} dni temu"
-    except Exception:
-        return ""
-
 def send_item_to_discord(
     item,
     webhook_url: str,
@@ -77,32 +44,29 @@ def send_item_to_discord(
 ) -> bool:
     color = _parse_color(embed_color)
     
-    # ── Ocena sprzedającego (POPRAWIONE GWIAZDKI) ──────────────────
+    # ── Ocena sprzedającego ───────────────────────────────
     if item.feedback_count > 0:
         score = min(item.feedback_score, 5.0)
-        full_stars = int(score)
-        has_half = (score - full_stars) >= 0.5
-        stars_display = "⭐" * full_stars
-        if has_half:
-            stars_display += "✨"
-        rating_val = f"{stars_display} ({item.feedback_count})"
+        full = int(score)
+        half = 1 if (score - full) >= 0.5 else 0
+        empty = 5 - full - half
+        stars = "⭐" * full + ("✨" if half else "") + ("☆" * empty)
+        rating_val = f"{stars} ({item.feedback_count})"
     else:
-        rating_val = "Brak ocen"
+        rating_val = "☆☆☆☆☆ Brak ocen"
 
-    # ── Cena ──────────────────────────────────────────────────────────────
-    price_val = f"{item.price} {item.currency}"
-    if hasattr(item, 'total_price') and item.total_price:
-        price_val += f" ({item.total_price})"
+    # ── Cena w jednej linii ───────────────────────────────
+    price_val = f"**{item.price} {item.currency}** ({item.total_price})"
 
-    # ── Sprzedający z flagą ───────────────────────────────────────────────
+    # ── Flaga kraju sprzedającego ─────────────────────────
     seller_name = f"{item.country_flag} {item.user_login}" if item.user_login else "🌍 —"
 
-    # ── DATY - POLSKI FORMAT TEKSTOWY (NIE <t:...>!) ─────────────────────
-    polish_date = _format_polish_date(item.raw_timestamp)
-    time_ago = _format_time_ago(item.raw_timestamp)
-    date_value = f"{polish_date}\n{time_ago}"
+    # ── DATA: TYLKO DYNAMICZNE ODLICZANIE (bez godziny!) ──
+    # :R = Czas względny (np. "1 sekundę temu") → aktualizuje się sam
+    discord_relative = f"<t:{item.raw_timestamp}:R>"
+    date_value = discord_relative
 
-    # ── Główny Embed ──────────────────────────────────────────────────────
+    # ── Główny embed ──────────────────────────────────────
     main_embed = {
         "author": {
             "name": seller_name,
@@ -122,6 +86,7 @@ def send_item_to_discord(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
+    # Ostrzeżenie o ukrytym przedmiocie
     if item.is_hidden:
         main_embed["footer"] = {
             "text": "⚠️ Ten przedmiot jest ukryty na Vinted – nie można go kupić!"
@@ -130,7 +95,7 @@ def send_item_to_discord(
     if item.photos:
         main_embed["image"] = {"url": item.photos[0]}
 
-    # Dodatkowe zdjęcia
+    # Dodatkowe embedy (galeria zdjęć 2 i 3)
     embeds = [main_embed]
     for photo_url in item.photos[1:3]:
         embeds.append({
