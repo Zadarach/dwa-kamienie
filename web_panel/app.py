@@ -1,6 +1,6 @@
 """
 web_panel/app.py - Flask panel webowy.
-WERSJA: 3.5 - Nowe domyślne wartości ustawień
+WERSJA: 3.6 - Wsparcie dla wielu URLi na zapytanie
 """
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 import sqlite3
@@ -24,12 +24,11 @@ def init_config_defaults():
     conn = get_db()
     c = conn.cursor()
     
-    # NOWE DOMYŚLNE WARTOŚCI (zgodne z życzeniem użytkownika)
     defaults = {
-        ("scan_interval", "20"),           # ZMIANA: 60 → 20 sekund
-        ("items_per_query", "15"),         # ZMIANA: 20 → 15 przedmiotów
-        ("new_item_window", "5"),          # ZMIANA: 2 → 5 minut
-        ("query_delay", "2"),              # ZMIANA: 5 → 2 sekundy
+        ("scan_interval", "20"),
+        ("items_per_query", "15"),
+        ("new_item_window", "5"),
+        ("query_delay", "2"),
         ("discord_bot_token", ""),
         ("proxy_list", ""),
     }
@@ -59,68 +58,85 @@ def dashboard():
 def queries():
     conn = get_db()
     all_queries = conn.execute("SELECT * FROM queries ORDER BY id DESC").fetchall()
+    
+    # Pobierz liczbę URLi dla każdego zapytania
+    queries_with_urls = []
+    for q in all_queries:
+        url_count = conn.execute("SELECT COUNT(*) FROM query_urls WHERE query_id = ?", (q["id"],)).fetchone()[0]
+        query_dict = dict(q)
+        query_dict["url_count"] = url_count
+        queries_with_urls.append(query_dict)
+    
     conn.close()
-    return render_template("queries.html", queries=all_queries)
+    return render_template("queries.html", queries=queries_with_urls)
 
 @app.route("/query/add", methods=["GET", "POST"])
 def add_query():
     if request.method == "POST":
         name = request.form["name"]
-        url = request.form["url"]
         webhook = request.form["webhook_url"]
         channel = request.form.get("channel_name", name)
         color = request.form.get("embed_color", "5763719")
         active = 1 if request.form.get("active") else 0
         
-        conn = get_db()
-        conn.execute(
-            "INSERT INTO queries (name, url, discord_webhook_url, discord_channel_name, embed_color, active) VALUES (?, ?, ?, ?, ?, ?)",
-            (name, url, webhook, channel, color, active)
-        )
-        conn.commit()
-        conn.close()
+        # Obsługa wielu URLi (oddzielone enterem lub przecinkiem)
+        urls_raw = request.form.get("urls", "")
+        urls = [u.strip() for u in urls_raw.replace(",", "\n").split("\n") if u.strip()]
+        
+        if not urls:
+            flash("❌ Dodaj przynajmniej jeden URL!", "error")
+            return redirect(url_for("add_query"))
+        
+        import src.database as db
+        db.add_query(name, webhook, channel, color, urls, active)
+        
         flash("✅ Dodano zapytanie!", "success")
         return redirect(url_for("queries"))
+    
     return render_template("query_form.html")
 
 @app.route("/query/edit/<int:id>", methods=["GET", "POST"])
 def edit_query(id):
     conn = get_db()
+    
     if request.method == "POST":
         name = request.form["name"]
-        url = request.form["url"]
         webhook = request.form["webhook_url"]
         channel = request.form.get("channel_name", name)
         color = request.form.get("embed_color", "5763719")
         active = 1 if request.form.get("active") else 0
         
-        conn.execute(
-            "UPDATE queries SET name=?, url=?, discord_webhook_url=?, discord_channel_name=?, embed_color=?, active=? WHERE id=?",
-            (name, url, webhook, channel, color, active, id)
-        )
-        conn.commit()
-        conn.close()
+        # Obsługa wielu URLi
+        urls_raw = request.form.get("urls", "")
+        urls = [u.strip() for u in urls_raw.replace(",", "\n").split("\n") if u.strip()]
+        
+        if not urls:
+            flash("❌ Dodaj przynajmniej jeden URL!", "error")
+            return redirect(url_for("edit_query", id=id))
+        
+        import src.database as db
+        db.update_query(id, name, webhook, channel, color, urls, active)
+        
         flash("✅ Zaktualizowano zapytanie!", "success")
         return redirect(url_for("queries"))
+    
     query = conn.execute("SELECT * FROM queries WHERE id = ?", (id,)).fetchone()
+    urls = conn.execute("SELECT url FROM query_urls WHERE query_id = ?", (id,)).fetchall()
     conn.close()
-    return render_template("query_form.html", query=query)
+    
+    return render_template("query_form.html", query=query, urls=[u["url"] for u in urls])
 
 @app.route("/query/delete/<int:id>")
 def delete_query(id):
-    conn = get_db()
-    conn.execute("DELETE FROM queries WHERE id = ?", (id,))
-    conn.commit()
-    conn.close()
+    import src.database as db
+    db.delete_query(id)
     flash("🗑️ Usunięto zapytanie!", "success")
     return redirect(url_for("queries"))
 
 @app.route("/query/toggle/<int:id>")
 def toggle_query(id):
-    conn = get_db()
-    conn.execute("UPDATE queries SET active = NOT active WHERE id = ?", (id,))
-    conn.commit()
-    conn.close()
+    import src.database as db
+    db.toggle_query(id)
     return redirect(url_for("queries"))
 
 @app.route("/items")
@@ -152,7 +168,6 @@ def settings():
     config = {row["key"]: row["value"] for row in conn.execute("SELECT * FROM config").fetchall()}
     conn.close()
     
-    # NOWE DOMYŚLNE WARTOŚCI W PANELU
     return render_template("settings.html", config={
         "scan_interval": config.get("scan_interval", "20"),
         "items_per_query": config.get("items_per_query", "15"),
