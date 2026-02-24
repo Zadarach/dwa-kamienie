@@ -1,0 +1,43 @@
+# ==========================================
+# VINTED NOTIFICATION v4.0 - GITIGNORE
+# ==========================================
+
+# 1. Zmienne środowiskowe i sekrety (NAJWAŻNIEJSZE!)
+.env
+.env.*
+!.env.example
+
+# 2. Baza danych i logi (katalog data)
+data/*
+!data/.gitkeep
+data/vinted_notification.db
+data/vinted_notification.db-shm
+data/vinted_notification.db-wal
+data/logs.log
+data/backups/
+*.log
+
+# 3. Środowisko wirtualne Pythona
+venv/
+env/
+.venv/
+Pipfile.lock
+
+# 4. Pliki tymczasowe Pythona i cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# 5. Pliki systemowe (Mac / Windows)
+.DS_Store
+Thumbs.db
+ehthumbs.db
+$RECYCLE.BIN/
+
+# 6. Konfiguracja edytorów kodu (VS Code, PyCharm itp.)
+.vscode/
+.idea/
+*.swp
+*.swo
