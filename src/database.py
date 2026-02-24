@@ -5,6 +5,7 @@ WERSJA: 3.6 - Wsparcie dla wielu URLi na zapytanie
 import sqlite3
 import os
 import threading
+import time
 from datetime import datetime
 from src.logger import get_logger
 logger = get_logger("database")
@@ -16,7 +17,6 @@ def get_connection():
     """Zwraca połączenie z bazą z włączonym WAL mode."""
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
-    # Optymalizacje pod Raspberry Pi
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA cache_size=10000;")
@@ -28,7 +28,6 @@ def init_db():
         conn = get_connection()
         c = conn.cursor()
         
-        # Tabela queries (bez zmian)
         c.execute("""
             CREATE TABLE IF NOT EXISTS queries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,7 +42,6 @@ def init_db():
             )
         """)
         
-        # NOWA TABELA: query_urls (wiele URLi na jedno zapytanie)
         c.execute("""
             CREATE TABLE IF NOT EXISTS query_urls (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +52,6 @@ def init_db():
             )
         """)
         
-        # Tabela items
         c.execute("""
             CREATE TABLE IF NOT EXISTS items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,7 +72,6 @@ def init_db():
             )
         """)
         
-        # Tabela logs
         c.execute("""
             CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +82,6 @@ def init_db():
             )
         """)
         
-        # Tabela config
         c.execute("""
             CREATE TABLE IF NOT EXISTS config (
                 key TEXT PRIMARY KEY,
@@ -96,49 +91,22 @@ def init_db():
         
         # Migracja: przenieś istniejące URLe do nowej tabeli
         try:
-            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='queries_old'")
-            if not c.fetchone():
-                # Sprawdź czy kolumna url istnieje w queries
-                c.execute("PRAGMA table_info(queries)")
-                columns = [col[1] for col in c.fetchall()]
-                if 'url' in columns:
-                    logger.info("Migracja: przenoszenie URLi do tabeli query_urls...")
-                    # Przenieś URLe
-                    c.execute("""
-                        INSERT INTO query_urls (query_id, url)
-                        SELECT id, url FROM queries WHERE url IS NOT NULL AND url != ''
-                    """)
-                    # Usuń kolumnę url z queries (tworząc nową tabelę)
-                    c.execute("""
-                        CREATE TABLE queries_new (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            name TEXT NOT NULL,
-                            discord_webhook_url TEXT NOT NULL,
-                            discord_channel_name TEXT,
-                            embed_color TEXT DEFAULT '5763719',
-                            active INTEGER DEFAULT 1,
-                            last_item_ts INTEGER DEFAULT 0,
-                            items_found INTEGER DEFAULT 0,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """)
-                    c.execute("""
-                        INSERT INTO queries_new 
-                        SELECT id, name, discord_webhook_url, discord_channel_name, 
-                               embed_color, active, last_item_ts, items_found, created_at 
-                        FROM queries
-                    """)
-                    c.execute("DROP TABLE queries")
-                    c.execute("ALTER TABLE queries_new RENAME TO queries")
-                    logger.info("✅ Migracja zakończona")
+            c.execute("PRAGMA table_info(queries)")
+            columns = [col[1] for col in c.fetchall()]
+            if 'url' in columns:
+                logger.info("Migracja: przenoszenie URLi do tabeli query_urls...")
+                c.execute("""
+                    INSERT OR IGNORE INTO query_urls (query_id, url)
+                    SELECT id, url FROM queries WHERE url IS NOT NULL AND url != ''
+                """)
+                conn.commit()
+                logger.info("✅ Migracja zakończona")
         except Exception as e:
-            logger.warning(f"Migracja nie była potrzebna lub nieudana: {e}")
+            logger.warning(f"Migracja nie była potrzebna: {e}")
         
         conn.commit()
         conn.close()
         logger.info("✅ Baza danych zainicjalizowana")
-
-# ── QUERIES ──────────────────────────────────────────────────────
 
 def get_all_queries(active_only=False):
     """Pobiera wszystkie zapytania z ich URLami."""
@@ -153,7 +121,6 @@ def get_all_queries(active_only=False):
     queries = []
     for row in c.fetchall():
         query = dict(row)
-        # Pobierz wszystkie URLe dla tego zapytania
         c.execute("SELECT url, last_item_ts FROM query_urls WHERE query_id = ?", (query['id'],))
         query['urls'] = [{'url': r['url'], 'last_item_ts': r['last_item_ts']} for r in c.fetchall()]
         queries.append(query)
@@ -174,7 +141,6 @@ def add_query(name, webhook_url, channel_name, embed_color, urls, active=1):
         
         query_id = c.lastrowid
         
-        # Dodaj wszystkie URLe
         for url in urls:
             c.execute("""
                 INSERT INTO query_urls (query_id, url)
@@ -198,10 +164,8 @@ def update_query(query_id, name, webhook_url, channel_name, embed_color, urls, a
             WHERE id=?
         """, (name, webhook_url, channel_name, embed_color, active, query_id))
         
-        # Usuń stare URLe
         c.execute("DELETE FROM query_urls WHERE query_id = ?", (query_id,))
         
-        # Dodaj nowe URLe
         for url in urls:
             if url.strip():
                 c.execute("""
@@ -233,7 +197,7 @@ def toggle_query(query_id):
         conn.close()
 
 def update_query_last_ts(query_id, timestamp):
-    """Aktualizuje timestamp ostatniego przedmiotu dla WSZYSTKICH URLi zapytania."""
+    """Aktualizuje timestamp ostatniego przedmiotu."""
     with _lock:
         conn = get_connection()
         c = conn.cursor()
@@ -250,8 +214,6 @@ def increment_query_items_found(query_id):
         c.execute("UPDATE queries SET items_found = items_found + 1 WHERE id = ?", (query_id,))
         conn.commit()
         conn.close()
-
-# ── ITEMS ──────────────────────────────────────────────────────
 
 def item_exists(vinted_id):
     """Sprawdza czy przedmiot już istnieje w bazie."""
@@ -276,7 +238,7 @@ def add_item(vinted_id, title, brand, price, currency, size, status, photo_url, 
                   photo_url, item_url, query_id, timestamp))
             conn.commit()
         except sqlite3.IntegrityError:
-            pass  # Już istnieje
+            pass
         finally:
             conn.close()
 
@@ -288,8 +250,6 @@ def get_all_items(limit=100):
     items = [dict(row) for row in c.fetchall()]
     conn.close()
     return items
-
-# ── LOGS ──────────────────────────────────────────────────────
 
 def add_log(level, source, message):
     """Dodaje wpis do logów."""
@@ -314,13 +274,10 @@ def enable_db_logging():
     """Przekierowuje logi do bazy danych."""
     import logging
     from src.logger import DBHandler
-    
     db_handler = DBHandler()
     db_handler.setLevel(logging.INFO)
-    logger = logging.getLogger()
-    logger.addHandler(db_handler)
-
-# ── CONFIG ──────────────────────────────────────────────────────
+    logger_module = logging.getLogger()
+    logger_module.addHandler(db_handler)
 
 _config_cache = {}
 _config_cache_time = 0
@@ -357,12 +314,10 @@ def set_config(key, value):
         _config_cache.pop(key, None)
 
 def _invalidate_config_cache():
-    """Czyści cache konfiguracji (wywoływane przy SIGHUP)."""
+    """Czyści cache konfiguracji."""
     global _config_cache, _config_cache_time
     _config_cache = {}
     _config_cache_time = 0
-
-# ── STATS ──────────────────────────────────────────────────────
 
 def get_stats():
     """Pobiera statystyki bazy."""
