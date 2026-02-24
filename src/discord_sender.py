@@ -1,6 +1,6 @@
 """
 discord_sender.py - Wysyłanie powiadomień na Discord przez Webhooks.
-WERSJA: 3.4 - Tylko dynamiczne odliczanie (bez godziny i daty)
+WERSJA: 3.5 - Tylko dynamiczne odliczanie + hover z datą
 """
 import time
 import requests
@@ -61,8 +61,9 @@ def send_item_to_discord(
     # ── Flaga kraju sprzedającego ─────────────────────────
     seller_name = f"{item.country_flag} {item.user_login}" if item.user_login else "🌍 —"
 
-    # ── DATA: TYLKO DYNAMICZNE ODLICZANIE (bez godziny!) ──
+    # ── DATA: TYLKO DYNAMICZNE ODLICZANIE ─────────────────
     # :R = Czas względny (np. "1 sekundę temu") → aktualizuje się sam
+    # Po najechaniu myszką Discord automatycznie pokazuje pełną datę
     discord_relative = f"<t:{item.raw_timestamp}:R>"
     date_value = discord_relative
 
