@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  vinted-notification:
+    build: .
+    image: vinted-notification:latest
+    container_name: vinted-notification
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - ./data:/app/data
+
+    environment:
+      - FLASK_SECRET=${FLASK_SECRET:-vinted-notification-secret}
+      - PYTHONUNBUFFERED=1
+
+    # Dla Raspberry Pi - ograniczenia zasobów
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.8'
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

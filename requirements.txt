@@ -1,0 +1,11 @@
+# Vinted-Notification v2.0 — requirements.txt
+# Python 3.9+ / Windows / Linux / Raspberry Pi
+
+# HTTP
+requests>=2.31.0
+
+# Panel webowy
+flask>=3.0.0
+
+# Opcjonalne: SOCKS proxy support (dla dodatkowej anonimowości)
+# pip install requests[socks]
