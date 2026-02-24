@@ -1,19 +1,73 @@
 {% extends "base.html" %}
 {% block title %}Śledzenie Cen{% endblock %}
+{% block page_title %}💰 Śledzenie Cen{% endblock %}
+
 {% block content %}
-<h1>💰 Śledzenie Cen</h1>
-<p>Obserwowanych przedmiotów: {{ stats.tracked_items }}</p>
-<p>Wykrytych spadków: {{ stats.price_drops_total }}</p>
-<table>
-    <tr><th>Tytuł</th><th>Pierwsza Cena</th><th>Ostatnia Cena</th><th>Najniższa</th><th>Spadki</th></tr>
-    {% for t in tracks %}
-    <tr>
-        <td>{{ t.title }}</td>
-        <td>{{ t.first_price }} {{ t.currency }}</td>
-        <td>{{ t.last_price }} {{ t.currency }}</td>
-        <td>{{ t.lowest_price }} {{ t.currency }}</td>
-        <td>{{ t.price_drops }}</td>
-    </tr>
-    {% endfor %}
-</table>
+<div class="max-w-6xl mx-auto">
+    <div class="grid grid-cols-3 gap-4 mb-6">
+        <div class="bg-gray-800 p-4 rounded-lg">
+            <div class="text-2xl font-bold text-blue-400">{{ stats.tracked_items }}</div>
+            <div class="text-sm text-gray-400">Śledzonych przedmiotów</div>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-lg">
+            <div class="text-2xl font-bold text-green-400">{{ stats.price_drops_total }}</div>
+            <div class="text-sm text-gray-400">Wykrytych spadków cen</div>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-lg">
+            <div class="text-2xl font-bold text-purple-400">{{ stats.active_tracks }}</div>
+            <div class="text-sm text-gray-400">Aktywnych tracków</div>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-gray-700">
+                <tr>
+                    <th class="px-4 py-3 text-left">Tytuł</th>
+                    <th class="px-4 py-3 text-left">Marka</th>
+                    <th class="px-4 py-3 text-left">Pierwsza cena</th>
+                    <th class="px-4 py-3 text-left">Ostatnia cena</th>
+                    <th class="px-4 py-3 text-left">Najniższa cena</th>
+                    <th class="px-4 py-3 text-left">Spadki</th>
+                    <th class="px-4 py-3 text-left">Ostatnia aktualizacja</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in tracks %}
+                <tr class="border-t border-gray-700">
+                    <td class="px-4 py-3">
+                        <a href="{{ t.item_url }}" target="_blank" class="text-blue-400 hover:underline">{{ t.title[:50] }}...</a>
+                    </td>
+                    <td class="px-4 py-3">{{ t.brand or '—' }}</td>
+                    <td class="px-4 py-3">{{ t.first_price }} {{ t.currency }}</td>
+                    <td class="px-4 py-3">{{ t.last_price }} {{ t.currency }}</td>
+                    <td class="px-4 py-3 text-green-400 font-bold">{{ t.lowest_price }} {{ t.currency }}</td>
+                    <td class="px-4 py-3">{{ t.price_drops }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-400">
+                        {% if t.updated_at %}
+                            {{ t.updated_at[:16] }}
+                        {% else %}
+                            Nigdy
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="px-4 py-8 text-center text-gray-400">Brak śledzonych przedmiotów. Cena będzie trackowana automatycznie gdy przedmiot pojawi się ponownie!</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-6 bg-blue-900/30 border border-blue-700 p-4 rounded-lg">
+        <h3 class="font-bold mb-2">💡 Jak działa śledzenie cen?</h3>
+        <ul class="list-disc list-inside text-sm space-y-1 text-gray-300">
+            <li>Bot automatycznie wykrywa gdy ten sam przedmiot pojawia się ponownie</li>
+            <li>Gdy cena spadnie, otrzymasz alert na Discord z kwotą oszczędności</li>
+            <li>Przedmioty są identyfikowane po: tytule + marce + rozmiarze</li>
+            <li>Tracki starsze niż 30 dni są automatycznie usuwane</li>
+        </ul>
+    </div>
+</div>
 {% endblock %}
