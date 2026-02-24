@@ -1,6 +1,6 @@
 """
 core.py - Logika scrapowania Vinted.
-WERSJA: 3.1 - Naprawiona deduplikacja, ochrona przed podwójnymi wysyłkami
+WERSJA: 3.5 - Agresywne pobieranie (ukryte przedmioty) + Cloudflare WARP ready
 """
 import time
 import queue
@@ -108,6 +108,10 @@ _SKIP_PARAMS = {
 }
 
 def _build_api_params(query_url: str, per_page: int) -> list:
+    """
+    Buduje listę parametrów do zapytania API Vinted.
+    AGRESYWNE: Maksymalna widoczność przedmiotów (ukryte, wstrzymane, pending).
+    """
     parsed = urlparse(query_url)
     url_params = parse_qsl(parsed.query, keep_blank_values=False)
     api_params = []
@@ -123,7 +127,12 @@ def _build_api_params(query_url: str, per_page: int) -> list:
     if not any(k == "order" for k, _ in api_params):
         api_params.append(("order", "newest_first"))
     
-    api_params.append(("with_disabled_items", "1"))
+    # ── AGRESYWNE PARAMETRY (maksymalna widoczność) ────────────
+    api_params.append(("with_disabled_items", "1"))      # Ukryte/wstrzymane oferty
+    api_params.append(("show_favorites", "0"))           # Ignoruj ulubione
+    api_params.append(("include_pending", "1"))          # Przedmioty w trakcie przetwarzania
+    api_params.append(("fetch_all_photos", "1"))         # Wszystkie zdjęcia
+    
     logger.debug(f"API params: {api_params}")
     return api_params
 
@@ -316,8 +325,8 @@ def scrape_all_queries():
         logger.debug("Brak aktywnych zapytań")
         return
 
-    items_per_query = int(db.get_config("items_per_query", "20"))
-    new_item_window = int(db.get_config("new_item_window", "2"))
+    items_per_query = int(db.get_config("items_per_query", "15"))
+    new_item_window = int(db.get_config("new_item_window", "5"))
 
     proxy_stats = proxy_manager.get_stats()
     proxy_info = f"{proxy_stats['total_proxies']} proxy" if proxy_stats["has_proxy"] else "direct"
