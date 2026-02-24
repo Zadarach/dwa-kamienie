@@ -1,6 +1,6 @@
 """
 discord_sender.py - Wysyłanie powiadomień na Discord przez Webhooks.
-WERSJA: 3.5 - Tylko dynamiczne odliczanie + hover z datą
+WERSJA: 3.6 - Tylko dynamiczne odliczanie + hover z datą
 """
 import time
 import requests
