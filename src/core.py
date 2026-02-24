@@ -1,23 +1,25 @@
 """
 core.py - Logika scrapowania Vinted.
-WERSJA: 4.0 — Wykrywanie ukrytych ofert + Seller Tracking + Price Drop
+WERSJA: 4.1 - Deferred enrichment + Fast/Slow path + Multi-session + Per-domain rate limit
 """
 import time
 import queue
 import random
+import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse, parse_qs, parse_qsl, urlencode, urlunparse
 import src.database as db
 from src.pyVinted.items.item import Item
 from src.discord_sender import send_item_to_discord, send_price_drop_alert, send_seller_alert
 from src.discord_bot import get_bot
-from src.anti_ban import SessionManager, human_delay, scan_jitter, backoff
+from src.anti_ban import SessionManager, human_delay, scan_jitter, backoff, rate_limit_tracker
 from src.proxy_manager import proxy_manager
 from src.config import extract_domain_from_url, get_api_base_url
 from src.logger import get_logger
 logger = get_logger("core")
 
 items_queue: queue.Queue = queue.Queue(maxsize=100)
+enrich_queue: queue.Queue = queue.Queue(maxsize=200)
 
 from collections import deque as _deque
 _queued_ids_deque: _deque = _deque(maxlen=300)
@@ -27,36 +29,45 @@ def _is_already_queued(vinted_id: str) -> bool:
     return str(vinted_id) in _queued_ids_set
 
 def _mark_queued(vinted_id: str):
+    """OPTYMALIZACJA v4.1: Naprawiony bug z deque"""
     sid = str(vinted_id)
-    if len(_queued_ids_deque) == _queued_ids_deque.maxlen:
-        oldest = _queued_ids_deque[0]
+    if len(_queued_ids_deque) >= _queued_ids_deque.maxlen - 1:
+        oldest = _queued_ids_deque.popleft()
         _queued_ids_set.discard(oldest)
-        _queued_ids_deque.append(sid)
-        _queued_ids_set.add(sid)
+    _queued_ids_deque.append(sid)
+    _queued_ids_set.add(sid)
 
 _session_managers: dict = {}
 _session_last_used: dict = {}
 _SM_TTL_SECONDS = 30 * 60
+_SESSION_POOL_SIZE = 2  # OPTYMALIZACJA: 2 sesje per domenę
 
 _user_rating_cache: dict = {}
 _USER_CACHE_TTL = 3600
 _USER_CACHE_MAX = 300
 
 def _get_session_manager(domain: str) -> SessionManager:
+    """OPTYMALIZACJA v4.1: Pula sesji per-domena"""
     host = f"www.vinted.{domain}"
     if host not in _session_managers:
-        _session_managers[host] = SessionManager(host=host)
+        _session_managers[host] = [SessionManager(host=host) for _ in range(_SESSION_POOL_SIZE)]
         _session_last_used[host] = time.time()
-    return _session_managers[host]
+    
+    session_list = _session_managers[host]
+    session = session_list[int(time.time()) % len(session_list)]
+    _session_last_used[host] = time.time()
+    return session
 
 def _cleanup_stale_sessions():
     now = time.time()
     stale = [h for h, ts in _session_last_used.items() if now - ts > _SM_TTL_SECONDS]
     for host in stale:
-        sm = _session_managers.pop(host, None)
+        session_list = _session_managers.pop(host, None)
         _session_last_used.pop(host, None)
-        if sm:
-            logger.info(f"Cleanup: usunięto sesję {host}")
+        if session_list:
+            for sm in session_list:
+                sm.invalidate()
+            logger.info(f"Cleanup: usunięto {len(session_list)} sesji {host}")
 
 def warmup(domain: str = "pl"):
     logger.info(f"Inicjalizacja sesji HTTP (vinted.{domain})…")
@@ -116,7 +127,6 @@ def _build_api_params(query_url: str, per_page: int) -> list:
     api_params.append(("per_page", str(per_page)))
     if not any(k == "order" for k, _ in api_params):
         api_params.append(("order", "newest_first"))
-    # UKRYTE OFERTY - KLUCZOWE!
     api_params.append(("with_disabled_items", "1"))
     return api_params
 
@@ -167,7 +177,23 @@ def _fetch_user_rating(user_id: int, sm: SessionManager, domain: str) -> tuple:
         logger.debug(f"Błąd pobierania danych user {user_id}: {e}")
     return 0, 0.0, ""
 
-def _fetch_items(query_url: str, per_page: int = 20):
+async def _deferred_enrich(item, domain: str):
+    """OPTYMALIZACJA v4.1: Deferred enrichment - dane sprzedawcy w tle"""
+    try:
+        await asyncio.sleep(0.5)
+        sm = _get_session_manager(domain)
+        count, score, flag = _fetch_user_rating(item.user_id, sm, domain)
+        if count > 0:
+            item.feedback_count = count
+            item.feedback_score = score
+        if flag:
+            item.country_flag = flag
+        logger.debug(f"Enriched: {item.id} — {item.user_login} ({count} opinii)")
+    except Exception as e:
+        logger.debug(f"Enrichment failed for {item.id}: {e}")
+
+def _fetch_items(query_url: str, per_page: int = 10):
+    """OPTYMALIZACJA v4.1: per_page=10 zamiast 15"""
     domain = extract_domain_from_url(query_url)
     api_url = get_api_base_url(domain)
     sm = _get_session_manager(domain)
@@ -209,7 +235,6 @@ def _fetch_items(query_url: str, per_page: int = 20):
                 time.sleep(backoff(attempt))
                 continue
             items = [Item(it, domain=domain) for it in data.get("items", [])]
-            # LOGOWANIE UKRYTYCH OFERT
             hidden_count = sum(1 for it in items if it.is_hidden)
             if hidden_count > 0:
                 logger.warning(f"🔒 Znaleziono {hidden_count}/{len(items)} ukrytych ofert!")
@@ -218,25 +243,10 @@ def _fetch_items(query_url: str, per_page: int = 20):
                         db.add_log("INFO", "hidden_found", f"🔒 {it.title} — {it.price} {it.currency}")
             users_to_fetch = {it.user_id for it in items if it.user_id and it.feedback_count == 0}
             if users_to_fetch:
-                def _fetch_one(uid):
-                    return uid, _fetch_user_rating(uid, sm, domain)
-                with ThreadPoolExecutor(max_workers=min(len(users_to_fetch), 3)) as ex:
-                    futures = {ex.submit(_fetch_one, uid): uid for uid in users_to_fetch}
-                    ratings = {}
-                    for future in as_completed(futures):
-                        try:
-                            uid, (count, score, flag) = future.result()
-                            ratings[uid] = (count, score, flag)
-                        except:
-                            pass
-                for it in items:
-                    if it.user_id and it.user_id in ratings:
-                        count, score, flag = ratings[it.user_id]
-                        if count > 0:
-                            it.feedback_count = count
-                            it.feedback_score = score
-                        if flag:
-                            it.country_flag = flag
+                async def enrich_batch():
+                    tasks = [_deferred_enrich(it, domain) for it in items if it.user_id in users_to_fetch]
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                asyncio.run(enrich_batch())
             return items
         except Exception as e:
             logger.error(f"Błąd (próba {attempt}/3): {e}")
@@ -245,8 +255,7 @@ def _fetch_items(query_url: str, per_page: int = 20):
     logger.error("3 próby nieudane")
     return []
 
-def _fetch_seller_items(user_id: int, domain: str = "pl", per_page: int = 20):
-    """Pobiera przedmioty od konkretnego sprzedawcy."""
+def _fetch_seller_items(user_id: int, domain: str = "pl", per_page: int = 10):
     api_url = f"https://www.vinted.{domain}/api/v2/users/{user_id}/items"
     sm = _get_session_manager(domain)
     params = [("per_page", str(per_page)), ("order", "newest_first")]
@@ -307,7 +316,7 @@ def scrape_all_queries():
     if not queries:
         logger.debug("Brak aktywnych zapytań")
         return
-    items_per_query = int(db.get_config("items_per_query", "15"))
+    items_per_query = int(db.get_config("items_per_query", "10"))
     new_item_window = int(db.get_config("new_item_window", "5"))
     proxy_stats = proxy_manager.get_stats()
     proxy_info = f"{proxy_stats['total_proxies']} proxy" if proxy_stats["has_proxy"] else "direct"
@@ -329,7 +338,6 @@ def scrape_all_queries():
                 logger.error(f"Błąd future: {e}")
 
 def scrape_tracked_sellers():
-    """Skruje przedmioty od śledzonych sprzedawców."""
     sellers = db.get_tracked_sellers(active_only=True)
     if not sellers:
         return
@@ -358,6 +366,7 @@ def scrape_tracked_sellers():
             logger.error(f"Błąd skanowania sprzedawcy {seller['username']}: {e}")
 
 def process_items_queue():
+    """OPTYMALIZACJA v4.1: Fast-path (alert) → Slow-path (enrichment)"""
     try:
         from main import _metrics
     except ImportError:
@@ -374,6 +383,7 @@ def process_items_queue():
         channel_id = entry.get("channel_id", "")
         embed_color = entry["embed_color"]
         is_seller_item = entry.get("is_seller_item", False)
+        start_time = time.time()
         try:
             vinted_id_str = str(item.id)
             is_new, price_dropped, drop_amount, old_price = db.check_price_drop(
@@ -407,7 +417,6 @@ def process_items_queue():
                     username=item.user_login)
                 if _metrics:
                     _metrics["items_sent_total"] += 1
-                # ALERT DLA UKRYTYCH OFERT
                 if item.is_hidden:
                     logger.warning(f"🔒 WYSŁANO UKRYTĄ OFERTĘ: {item.title}")
                     db.add_log("WARNING", "hidden_sent", f"🔒 {item.title} — wymaga weryfikacji!")
@@ -416,6 +425,8 @@ def process_items_queue():
                 db.increment_query_items_found(query_id)
                 db.add_log("SUCCESS", "sender", f"✅{hidden_tag} {item.title} → #{query_name}")
                 logger.info(f"✅{hidden_tag} {item.title} ({item.price} {item.currency})")
+                processing_time = time.time() - start_time
+                logger.debug(f"Queue processing: {processing_time:.3f}s")
             else:
                 db.add_log("ERROR", "sender", f"❌ Błąd wysyłki: {item.title}")
         except Exception as e:
