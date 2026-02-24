@@ -1,6 +1,6 @@
 """
 database.py - SQLite database layer.
-WERSJA: 4.0 - Seller tracking + Price drop + Fast scan support
+WERSJA: 4.1 - Seller tracking + Price drop + Fast scan support
 """
 import sqlite3
 import os
@@ -128,7 +128,7 @@ def init_db():
         
         conn.commit()
         conn.close()
-        logger.info("✅ Baza danych zainicjalizowana (v4.0)")
+        logger.info("✅ Baza danych zainicjalizowana (v4.1)")
 
 def get_all_queries(active_only=False):
     conn = get_connection()
