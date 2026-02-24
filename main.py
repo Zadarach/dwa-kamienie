@@ -1,6 +1,6 @@
 """
 main.py - Vinted-Notification v4.0
-FUNKCJE: Seller tracking + Price drop + Fast scan (5-8s)
+FUNKCJE: Seller tracking + Price drop + Fast scan (8s)
 """
 import asyncio
 import threading
@@ -13,24 +13,25 @@ sys.path.insert(0, BASE_DIR)
 from src.logger import setup_logging, enable_db_logging, get_logger
 import src.database as db
 from src.anti_ban import scan_jitter
-logger    = setup_logging("INFO")
-main_log  = get_logger("main")
-_stop     = asyncio.Event()
+logger = setup_logging("INFO")
+main_log = get_logger("main")
+_stop = asyncio.Event()
 
 _metrics = {
-    "scrapes_total":    0,
-    "items_sent_total":  0,
-    "errors_total":      0,
-    "uptime_seconds":    0,
+    "scrapes_total": 0,
+    "items_sent_total": 0,
+    "errors_total": 0,
+    "uptime_seconds": 0,
 }
 _start_time = time.time()
 
 def _format_metrics() -> str:
     _metrics["uptime_seconds"] = int(time.time() - _start_time)
     lines = []
+    counter_keys = {"scrapes_total", "items_sent_total", "errors_total"}
     for key, val in _metrics.items():
         prom_name = f"vinted_{key}"
-        prom_type = "counter" if key.endswith("_total") else "gauge"
+        prom_type = "counter" if key in counter_keys else "gauge"
         lines.append(f"# HELP {prom_name} Vinted bot metric: {key}")
         lines.append(f"# TYPE {prom_name} {prom_type}")
         lines.append(f"{prom_name} {val}")
@@ -60,6 +61,12 @@ def _setup_sighup():
             main_log.info("  ✅ Config cache wyczyszczony")
         except Exception as e:
             main_log.warning(f"  ⚠️ Błąd: {e}")
+        try:
+            from src.proxy_manager import proxy_manager
+            proxy_manager.invalidate()
+            main_log.info("  ✅ Proxy cache invalidated")
+        except Exception as e:
+            main_log.warning(f"  ⚠️ Błąd: {e}")
         main_log.info("✅ Konfiguracja przeładowana")
         db.add_log("INFO", "main", "Konfiguracja przeładowana")
     signal.signal(signal.SIGHUP, _on_sighup)
@@ -73,12 +80,9 @@ async def async_scraper():
     warmup()
     while not _stop.is_set():
         try:
-            # FUNKCJA 3: Interwał 5-10s dla szybkiego wykrywania
             interval = int(db.get_config("scan_interval", "8"))
-            
             await asyncio.to_thread(scrape_all_queries)
-            await asyncio.to_thread(scrape_tracked_sellers)  # FUNKCJA 1
-            
+            await asyncio.to_thread(scrape_tracked_sellers)
             _metrics["scrapes_total"] += 1
             _sd_notify("WATCHDOG=1")
         except Exception as e:
@@ -154,7 +158,7 @@ async def async_main():
     enable_db_logging()
     main_log.info("✅ Baza danych gotowa")
     queries = db.get_all_queries()
-    active  = sum(1 for q in queries if q["active"])
+    active = sum(1 for q in queries if q["active"])
     main_log.info(f"📋 Zapytania: {len(queries)} total, {active} aktywnych")
     _setup_sighup()
     _sd_notify("READY=1")
@@ -166,7 +170,7 @@ async def async_main():
         web_thread = threading.Thread(target=thread_web, name="WebPanel", daemon=True)
     web_thread.start()
     scraper_task = asyncio.create_task(async_scraper())
-    sender_task  = asyncio.create_task(async_sender())
+    sender_task = asyncio.create_task(async_sender())
     main_log.info("  ✅ Scraper + Seller tracking uruchomiony")
     main_log.info("  ✅ Sender uruchomiony")
     main_log.info(f"  📡 PID: {os.getpid()}")
